@@ -1,6 +1,6 @@
 # Tufte Map
 
-![Obsidian Plugin](https://img.shields.io/badge/Obsidian-Plugin-7B2FBF) ![license MIT](https://img.shields.io/badge/license-MIT-4C9A2A) ![Dark & Light Supported](https://img.shields.io/badge/Dark_%26_Light-Supported-C9A227) ![Mobile Supported](https://img.shields.io/badge/Mobile-Supported-1E88C7)
+![Obsidian Plugin](https://img.shields.io/badge/Obsidian-Plugin-7B2FBF) ![license MIT](https://img.shields.io/badge/license-MIT-4C9A2A) ![Dark & Light Supported](https://img.shields.io/badge/Dark_%26_Light-Supported-C9A227)
 
 Your vault's link graph, drawn as a contour map. Notes that link to one another lie close together, the land rises where notes are dense, and each summit is named after its most connected note. It is a companion to the [**Tufte for Obsidian**](https://github.com/PleiadesM/TufteObsidian) theme, in its paper, ink and single red, and it reads the colours of any other theme too.
 
@@ -31,7 +31,8 @@ Until Tufte Map is listed in the community directory, install it by hand: downlo
 ## Requirements
 
 - Obsidian 1.4.0 or newer.
-- Desktop and mobile. No network access, no telemetry, nothing to build. The map is computed on your device from Obsidian's own link index.
+- No network access, no telemetry, nothing to build. The map is computed on your device from Obsidian's own link index.
+- Desktop. It uses no desktop-only APIs and is not marked desktop-only, but it has not yet been tested on a phone or tablet.
 
 ## How this plugin is built
 
