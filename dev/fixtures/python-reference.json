@@ -1,0 +1,110 @@
+{
+ "frame_w": 1.430793,
+ "frame_h": 1.0,
+ "params": {
+  "embed": "links",
+  "walk": "P + 0.5 P^2 + 0.25 P^3",
+  "min_dist": 0.3,
+  "neighbor_factor": 1.1,
+  "seed": 42,
+  "stage": "oriented",
+  "margin": 0.07,
+  "umap": {
+   "n_neighbors": 24,
+   "min_dist": 0.3,
+   "metric": "cosine",
+   "random_state": 42
+  },
+  "bandwidth_factor": 0.45,
+  "peak_filter": 25,
+  "peak_floor": 0.15,
+  "merge_dist": 0.14,
+  "max_peaks": 10,
+  "min_summit_notes": 15,
+  "offshore_clearance": 0.2,
+  "frame_margin": 0.07,
+  "excludes": [],
+  "cache_key": "0733e2b2501ceaf7f78936600681d32189a9c90e0faf9228e68744c3408d4167"
+ },
+ "counts": {
+  "notes_scanned": 518,
+  "notes_placed": 505,
+  "isolates": 13,
+  "links_raw": 1880,
+  "links_resolved": 1865,
+  "links_unresolved": 2,
+  "links_non_note": 11,
+  "links_self": 0,
+  "undirected_pairs": 1812
+ },
+ "peaks": [
+  {
+   "anchor_title": "Cartography",
+   "val": 1.0,
+   "x": 1.223529,
+   "y": 0.561873
+  },
+  {
+   "anchor_title": "Rhetoric",
+   "val": 0.9484,
+   "x": 0.367727,
+   "y": 0.247492
+  },
+  {
+   "anchor_title": "Typography",
+   "val": 0.901,
+   "x": 0.21395,
+   "y": 0.58194
+  },
+  {
+   "anchor_title": "Color",
+   "val": 0.8093,
+   "x": 0.982834,
+   "y": 0.856187
+  },
+  {
+   "anchor_title": "Notebooks",
+   "val": 0.7749,
+   "x": 0.548248,
+   "y": 0.571906
+  },
+  {
+   "anchor_title": "Statistics",
+   "val": 0.7703,
+   "x": 1.039665,
+   "y": 0.183946
+  }
+ ],
+ "hubs": {
+  "Cartography": {
+   "deg": 84,
+   "x": 1.217166,
+   "y": 0.56169
+  },
+  "Color": {
+   "deg": 55,
+   "x": 0.960124,
+   "y": 0.829678
+  },
+  "Notebooks": {
+   "deg": 45,
+   "x": 0.535623,
+   "y": 0.571853
+  },
+  "Rhetoric": {
+   "deg": 68,
+   "x": 0.340461,
+   "y": 0.258843
+  },
+  "Statistics": {
+   "deg": 63,
+   "x": 1.013255,
+   "y": 0.154062
+  },
+  "Typography": {
+   "deg": 102,
+   "x": 0.163111,
+   "y": 0.576757
+  }
+ }
+}

@@ -1,0 +1,998 @@
+/* ==========================================================================
+ * Tufte Map — the view's stylesheet.
+ *
+ * Two halves, in this order:
+ *
+ *   1. the page        the pane, the sheet, the margin column and its
+ *                      text controls, laid out by a container query
+ *   2. the sheet       the SVG classes TufteMapRender draws with, which used
+ *                      to travel inside the <svg> in a <style> element and
+ *                      now live here, where a reader can override them
+ *
+ * Colour is always a theme token with an Obsidian fallback, so the plugin
+ * looks right under the Tufte theme and merely plain under any other, in
+ * both light and dark.  The tokens are resolved once, on the view's root, and
+ * everything below reads the resolved names — which are also the names the
+ * renderer writes onto the <svg> element, so the sheet and its margin cannot
+ * drift apart.
+ *
+ * There is no `!important` in this file.  The plugin's stylesheet is loaded
+ * after the app's, so an equal-specificity rule already wins.
+ * ====================================================================== */
+
+/* --------------------------------------------------------------------------
+ * 1. The page
+ * ----------------------------------------------------------------------- */
+
+.tufte-map-view {
+  --tufte-map-ink: var(--tufte-ink, var(--text-normal));
+  --tufte-map-muted: var(--tufte-muted, var(--text-muted));
+  --tufte-map-faint: var(--tufte-faint, var(--text-faint));
+  --tufte-map-accent: var(--tufte-accent, var(--text-accent));
+  --tufte-map-bg: var(--tufte-bg, var(--background-primary));
+  --tufte-map-rule: var(--tufte-rule, var(--background-modifier-border));
+
+  /* The one place a dimmed element's opacity is named, so the whole sheet
+     fades by one number and the hover and the filter cannot disagree. */
+  --tufte-map-dim-hot: 0.22;
+  --tufte-map-dim-filter: 0.10;
+  --tufte-map-fade: 120ms;
+
+  /* The strength of a non-summit dot runs from the first number (the least
+     linked note) to the second (the most), by its centrality; a summit anchor
+     is always at full strength.  A narrow band on purpose: every dot must
+     still read as a dot, and the degree ramp already carries most of the
+     difference in colour. */
+  --tufte-map-dot-alpha-lo: 0.66;
+  --tufte-map-dot-alpha-hi: 0.80;
+
+  /* ...and its colour runs between two WARM greys, the theme's own family
+     (HSL 45°, 12%: the plate caption's --tufte-muted-warm and the dark
+     palette's muted), from the lighter for the least linked note to the
+     deeper for the most.  Lighter than the old muted-to-ink ramp on purpose:
+     the ordinary notes are the ground of the map, the red summits its
+     figure, and a near-black hub dot competed with the red for the eye. */
+  --tufte-map-dot-lo: #a59f8c;
+  --tufte-map-dot-hi: var(--tufte-muted-warm, #6d6755);
+
+  /* The pane's width, not the window's, decides the layout: a map in a narrow
+     sidebar and a map in a wide tab are the same plugin and must not need the
+     same screen.
+
+     The container is declared HERE, on the view's own element, and not on the
+     root below — an element cannot query the container it establishes, so a
+     container query written against `.tufte-map-root` while `.tufte-map-root`
+     was the container silently did nothing to it while still applying to its
+     children.  The result was the worst of both layouts: a sheet obediently
+     74% wide with the margin column stacked underneath it. */
+  container-type: inline-size;
+  container-name: tufte-map;
+
+  padding: 0;
+  overflow: auto;
+  background-color: var(--tufte-map-bg);
+  color: var(--tufte-map-ink);
+}
+
+.tufte-map-root {
+  display: flex;
+  flex-direction: column;
+  gap: 1.6em;
+  /* The side gutter is a PANE gutter, not a text measure, so it is given in
+     pixels: at a 22 px reading size an em-based gutter took five per cent of
+     an 884 px pane away from a sheet that needed every point of it. */
+  padding: 1.6em 12px 2.2em;
+  /* The map is a DOCUMENT, not chrome.  A leaf in a side split is given the
+     interface face, and `var(--font-text)` with nothing behind it is invalid
+     at computed-value time — which means "inherit", which means the sidebar
+     set every summit name in Gill Sans while the same sheet in the main pane
+     was in ET Book.  The fallback chain ends in a serif, so the sheet, the
+     strip and the band are in the reading face wherever the leaf is. */
+  font-family: var(--font-text, var(--font-text-theme, serif));
+  font-size: var(--font-text-size, 16px);
+  line-height: 1.5;
+}
+
+.tufte-map-root:focus {
+  outline: none;
+}
+
+.tufte-map-root:focus-visible {
+  outline: 1px solid var(--tufte-map-accent);
+  outline-offset: 4px;
+}
+
+/* -- the strip ------------------------------------------------------------
+ * One row above the sheet in BOTH presentations: the search on the left, the
+ * details toggle in the corner.  The reader learns one arrangement, and the
+ * sidebar — where the view header is hidden by default — has the control it
+ * would otherwise have had to go without.
+ * ----------------------------------------------------------------------- */
+
+.tufte-map-strip {
+  display: flex;
+  align-items: center;
+  /* The toggle's own hit area is the strip's height and nothing adds to it. */
+  min-height: 28px;
+  gap: 0.6em;
+  font-size: calc(var(--font-text-size, 16px) * 0.8);
+  line-height: 1.45;
+}
+
+.tufte-map-strip-find {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6em;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* In the wide presentation the field is a MEASURE, not a stretch: an input
+   eleven hundred pixels long invites a sentence. */
+.tufte-map-full .tufte-map-strip-find {
+  flex: 0 1 18em;
+}
+
+.tufte-map-full .tufte-map-strip {
+  justify-content: space-between;
+}
+
+/* The two share a line wherever there is a line to share.  A sidebar's scarce
+   dimension is its HEIGHT, and the two-row strip was spending ninety pixels of
+   a three-hundred-and-eighty-pixel pane on a search box and an icon; one row
+   spends twenty-eight.  Below 240 px the input has no measure left, and only
+   there does the toggle keep the corner with the search beneath it. */
+@container tufte-map (max-width: 239.98px) {
+  .tufte-map-compact .tufte-map-strip {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      ".    toggle"
+      "find find";
+    row-gap: 0.3em;
+  }
+
+  .tufte-map-compact .tufte-map-strip-find { grid-area: find; }
+  .tufte-map-compact .tufte-map-corner-toggle { grid-area: toggle; }
+}
+
+/* The corner toggle: an icon in the faint register with a 28 px hit area and
+   no box at all — the one piece of furniture a Tufte page allows is none. */
+.tufte-map-corner-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--tufte-map-faint);
+  cursor: pointer;
+}
+
+/* ...and the same specificity argument the text controls needed: Obsidian's
+   `button:not(.clickable-icon)` is (0,1,1) and would put a fill and a shadow
+   behind the icon.  Three classes and the element name are (0,3,1). */
+.tufte-map-view .tufte-map-root button.tufte-map-corner-toggle,
+.tufte-map-view .tufte-map-root button.tufte-map-corner-toggle:hover,
+.tufte-map-view .tufte-map-root button.tufte-map-corner-toggle:focus,
+.tufte-map-view .tufte-map-root button.tufte-map-corner-toggle:active {
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  background-color: transparent;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.tufte-map-view .tufte-map-root button.tufte-map-corner-toggle:hover,
+.tufte-map-corner-toggle:hover,
+.tufte-map-corner-toggle.tufte-map-on {
+  color: var(--tufte-map-accent);
+}
+
+.tufte-map-view .tufte-map-root button.tufte-map-corner-toggle:focus-visible {
+  box-shadow: none;
+  outline: 1px solid var(--tufte-map-accent);
+  outline-offset: 2px;
+}
+
+.tufte-map-corner-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* -- the sheet ----------------------------------------------------------- */
+
+.tufte-map-sheet {
+  position: relative;
+  /* A gesture transforms the whole sheet for the hundred and eighty
+     milliseconds before it settles, and the paper must not spill out of its
+     box while it does. */
+  overflow: hidden;
+  min-height: 6em;
+  touch-action: none;
+}
+
+.tufte-map-canvas {
+  display: block;
+  min-height: 4em;
+}
+
+.tufte-map-status {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 24em;
+  margin: 0;
+  text-align: center;
+  font-style: italic;
+  font-size: 0.86em;
+  color: var(--tufte-map-muted);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.tufte-map-status.tufte-map-status-on {
+  opacity: 1;
+}
+
+/* -- the margin column --------------------------------------------------- */
+
+/* The margin column is a SIDENOTE, and it is set in the sidenote's register:
+   a fixed fraction of the pane's reading size rather than a fraction of
+   whatever it happens to be nested in.  The difference showed the first time
+   the plugin met a real vault: at a 19 px reading size the inherited `0.86em`
+   put the guide paragraph at 16 px, which took a third of the pane's height
+   and ellipsised every summit name in the list. */
+.tufte-map-margin {
+  display: flex;
+  flex-direction: column;
+  gap: 1.4em;
+  font-size: calc(var(--font-text-size, 16px) * 0.8);
+  line-height: 1.45;
+  color: var(--tufte-map-ink);
+}
+
+.tufte-map-summary {
+  margin: 0;
+  font-size: 1.05em;
+  font-style: italic;
+  color: var(--tufte-map-muted);
+}
+
+.tufte-map-guide {
+  margin: 0;
+  color: var(--tufte-map-muted);
+  text-wrap: pretty;
+}
+
+.tufte-map-section {
+  margin: 0;
+}
+
+.tufte-map-heading {
+  margin: 0 0 0.4em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid var(--tufte-map-rule);
+  font-size: 0.72em;
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  color: var(--tufte-map-muted);
+}
+
+.tufte-map-heading.tufte-map-empty-heading {
+  opacity: 0.45;
+}
+
+/* Find ------------------------------------------------------------------- */
+
+/* Specificity, not `!important`.
+ *
+ * Obsidian's app.css styles form fields by TYPE:
+ *
+ *   input[type='text'], input[type='search'], …            (0,1,1)
+ *   input[type='text']:not(:disabled):hover, …             (0,3,1)
+ *   input[type='text']:focus, …:focus-visible, …           (0,2,1)
+ *
+ * — a box, a radius, a form-field fill, a focus shadow and a fixed height.
+ * A single class selector is (0,1,0) and loses to every one of them, which is
+ * exactly what the first install showed: the Find field came up as a rounded
+ * bordered box with our underline drawn inside it.  The rules below carry two
+ * ancestor classes, the input's own class, its element name and its type
+ * attribute — (0,4,1) — so the base and focus rules are beaten outright, and
+ * a state pseudo-class puts them at (0,5,1), above the hover rule too.  Both
+ * `text` and `search` are named, because the field's type is a detail of the
+ * view that must not be able to change the way it looks. */
+.tufte-map-view .tufte-map-strip input.tufte-map-find[type="text"],
+.tufte-map-view .tufte-map-strip input.tufte-map-find[type="search"] {
+  /* An underlined input, not a boxed one: the rule under the words is the
+     only furniture a Tufte page allows a form. */
+  -webkit-appearance: none;
+  appearance: none;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0.15em 0 0.2em;
+  border: none;
+  border-bottom: 1px solid var(--tufte-map-rule);
+  border-radius: 0;
+  background: none;
+  background-color: transparent;
+  box-shadow: none;
+  color: var(--tufte-map-ink);
+  font-family: inherit;
+  font-size: 1em;
+  line-height: inherit;
+  transition: none;
+}
+
+.tufte-map-view .tufte-map-strip input.tufte-map-find[type="text"]:hover,
+.tufte-map-view .tufte-map-strip input.tufte-map-find[type="search"]:hover,
+.tufte-map-view .tufte-map-strip input.tufte-map-find[type="text"]:active,
+.tufte-map-view .tufte-map-strip input.tufte-map-find[type="search"]:active {
+  border: none;
+  border-bottom: 1px solid var(--tufte-map-muted);
+  border-radius: 0;
+  background: none;
+  background-color: transparent;
+  box-shadow: none;
+  transition: none;
+}
+
+/* The focus is still SAID — in the accent, under the words, where the pinned
+   rows say the same thing. */
+.tufte-map-view .tufte-map-strip input.tufte-map-find[type="text"]:focus,
+.tufte-map-view .tufte-map-strip input.tufte-map-find[type="search"]:focus,
+.tufte-map-view .tufte-map-strip input.tufte-map-find[type="text"]:focus-visible,
+.tufte-map-view .tufte-map-strip input.tufte-map-find[type="search"]:focus-visible {
+  outline: none;
+  border: none;
+  border-bottom: 1px solid var(--tufte-map-accent);
+  border-radius: 0;
+  background: none;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+/* WebKit's own search furniture — the magnifier, the cancel pill — is a box
+   by another name. */
+.tufte-map-find::-webkit-search-decoration,
+.tufte-map-find::-webkit-search-cancel-button,
+.tufte-map-find::-webkit-search-results-button,
+.tufte-map-find::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
+/* The plain-class rules stay, so the field is still an underline under a
+   stylesheet that is not Obsidian's — the harness, a screenshot, an export. */
+.tufte-map-find {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.15em 0 0.2em;
+  border: none;
+  border-bottom: 1px solid var(--tufte-map-rule);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--tufte-map-ink);
+  font-family: inherit;
+  font-size: 1em;
+  line-height: inherit;
+}
+
+.tufte-map-find::placeholder {
+  color: var(--tufte-map-faint);
+  font-style: italic;
+}
+
+.tufte-map-find:hover,
+.tufte-map-find:active {
+  border-bottom-color: var(--tufte-map-muted);
+  background: none;
+  box-shadow: none;
+}
+
+.tufte-map-find:focus,
+.tufte-map-find:focus-visible {
+  outline: none;
+  border-bottom-color: var(--tufte-map-accent);
+  box-shadow: none;
+}
+
+.tufte-map-count {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 0.92em;
+  font-style: italic;
+  white-space: nowrap;
+  color: var(--tufte-map-faint);
+}
+
+/* Lists ------------------------------------------------------------------ */
+
+.tufte-map-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tufte-map-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+  padding: 0.12em 0;
+  cursor: pointer;
+}
+
+.tufte-map-row-numeral {
+  flex: 0 0 auto;
+  min-width: 2.2em;
+  color: var(--tufte-map-accent);
+  font-variant-numeric: lining-nums;
+  letter-spacing: 0.08em;
+}
+
+/* A note's name is the one thing in this column the reader came for, so it
+   WRAPS rather than being cut: "NOTEBOO…" is a row that has failed at its
+   only job.  The numeral and the count keep their own columns, and the row
+   is aligned on the first line's baseline, so a wrapped name still reads
+   against its number. */
+.tufte-map-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  letter-spacing: 0.08em;
+  font-size: 0.92em;
+}
+
+.tufte-map-row-folder {
+  letter-spacing: 0;
+  font-size: 1em;
+}
+
+.tufte-map-row-count {
+  flex: 0 0 auto;
+  min-width: 2.4em;
+  text-align: right;
+  font-style: italic;
+  color: var(--tufte-map-faint);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.tufte-map-row:hover .tufte-map-row-name,
+.tufte-map-row:focus-visible .tufte-map-row-name {
+  color: var(--tufte-map-ink);
+}
+
+/* A pinned row is marked by a rule in the accent under its name — the same
+   mark the search input uses when it has the focus, for the same reason: it
+   is the page's one way of saying "this is live". */
+.tufte-map-row.tufte-map-pinned .tufte-map-row-name {
+  box-shadow: inset 0 -1px 0 0 var(--tufte-map-accent);
+}
+
+.tufte-map-row.tufte-map-pinned .tufte-map-row-count {
+  color: var(--tufte-map-muted);
+}
+
+/* Show ------------------------------------------------------------------- */
+
+.tufte-map-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45em;
+  margin: 0;
+}
+
+.tufte-map-sep {
+  color: var(--tufte-map-faint);
+}
+
+.tufte-map-text-control {
+  /* A word, not a button.  Everything Obsidian gives a <button> — the box,
+     the fill, the shadow, the radius — is removed, and what is left is an
+     underlined word the size of the text around it. */
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--tufte-map-muted);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--tufte-map-rule);
+  text-underline-offset: 0.22em;
+  cursor: pointer;
+}
+
+.tufte-map-text-control:hover {
+  background: none;
+  box-shadow: none;
+  color: var(--tufte-map-ink);
+  text-decoration-color: var(--tufte-map-muted);
+}
+
+.tufte-map-text-control:focus-visible {
+  outline: 1px solid var(--tufte-map-accent);
+  outline-offset: 3px;
+}
+
+.tufte-map-text-control.tufte-map-on {
+  color: var(--tufte-map-accent);
+  text-decoration-color: var(--tufte-map-accent);
+}
+
+/* ...and the same specificity argument as the Find field, for the same
+   reason.  `button:not(.clickable-icon)` is (0,1,1) and carries the fill and
+   the shadow; `button:hover` is (0,1,1) too.  A bare class is (0,1,0) and
+   loses to both, so the words came up wearing Obsidian's buttons — which the
+   browser harness only showed once app.css's own rules were loaded into it.
+   Three classes and the element name put these at (0,3,1), and a state
+   pseudo-class at (0,4,1). */
+.tufte-map-view .tufte-map-root button.tufte-map-text-control,
+.tufte-map-view .tufte-map-root button.tufte-map-text-control:hover,
+.tufte-map-view .tufte-map-root button.tufte-map-text-control:focus,
+.tufte-map-view .tufte-map-root button.tufte-map-text-control:active {
+  display: inline;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  background-color: transparent;
+  box-shadow: none;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  white-space: normal;
+  cursor: pointer;
+}
+
+.tufte-map-view .tufte-map-root button.tufte-map-text-control:hover {
+  color: var(--tufte-map-ink);
+  text-decoration-color: var(--tufte-map-muted);
+}
+
+.tufte-map-view .tufte-map-root button.tufte-map-text-control:focus-visible {
+  box-shadow: none;
+  outline: 1px solid var(--tufte-map-accent);
+  outline-offset: 3px;
+}
+
+.tufte-map-linkless {
+  margin: 0;
+  font-style: italic;
+  color: var(--tufte-map-faint);
+}
+
+/* -- the two layouts ----------------------------------------------------- */
+
+/* Two layouts, and the breakpoint between them is a judgement about the MAP,
+   not about the screen.  A margin column costs about a quarter of the pane;
+   below 1,100 px that quarter is taken out of a sheet that is already too
+   small to carry its own type, and the first real install showed what that
+   costs: at an 884 px pane the sheet had 750 px, summit names sat on top of
+   one another and a dot lay on a numeral.  So below 1,100 px the sheet takes
+   the whole width and the margin's contents go underneath as a quiet band —
+   the same words, in columns, read after the map instead of beside it. */
+.tufte-map-root {
+  flex-direction: column;
+}
+
+/* -- the band (stacked) -------------------------------------------------- */
+
+/* Two columns from 520 px, three from 760 px.  The groups are the ones the
+   reader already has: the guide and its search box, the summits, and the
+   folders with the handful of switches. */
+@container tufte-map (min-width: 520px) {
+  .tufte-map-margin {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "head    head"
+      "guide   summits"
+      "find    summits"
+      "folders show"
+      "foot    foot";
+    column-gap: 2.4em;
+    row-gap: 1.2em;
+    align-items: start;
+  }
+
+  .tufte-map-summary { grid-area: head; }
+  .tufte-map-guide { grid-area: guide; }
+  .tufte-map-section-find { grid-area: find; }
+  .tufte-map-section-summits { grid-area: summits; }
+  .tufte-map-section-folders { grid-area: folders; }
+  .tufte-map-section-show { grid-area: show; }
+  .tufte-map-linkless { grid-area: foot; }
+}
+
+@container tufte-map (min-width: 760px) {
+  .tufte-map-margin {
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-areas:
+      "head    head     head"
+      "guide   summits  folders"
+      "find    summits  show"
+      "foot    foot     foot";
+  }
+}
+
+/* -- the column (wide) --------------------------------------------------- */
+
+@container tufte-map (min-width: 1100px) {
+  .tufte-map-root {
+    flex-direction: row;
+    align-items: flex-start;   /* top-aligned: a sheet centred against a
+                                  column of lists floats */
+    gap: 3%;
+    padding: 2.2em 2em 2.6em;
+  }
+
+  .tufte-map-sheet {
+    flex: 0 0 78%;
+    max-width: 78%;
+  }
+
+  .tufte-map-margin {
+    /* Back to one column: the grid above belongs to the band. */
+    display: flex;
+    flex-direction: column;
+    grid-template-columns: none;
+    grid-template-areas: none;
+    gap: 1.4em;
+    flex: 0 0 19%;
+    max-width: 19%;
+    position: sticky;
+    top: 0;
+  }
+}
+
+/* -- the two presentations ------------------------------------------------
+ * The container queries above are about WIDTH.  The presentation is about the
+ * container: a leaf in a side split is compact at any width, because a sidebar
+ * is a column the reader keeps open beside their work rather than a sheet they
+ * spread out.  The mode is decided in JavaScript (it needs the workspace, not
+ * just a measurement) and arrives as a class, which beats every width query
+ * above on specificity whichever way round they are written.
+ * ----------------------------------------------------------------------- */
+
+.tufte-map-root.tufte-map-compact {
+  flex-direction: column;
+  /* Every measure here is in pixels and small on purpose.  A sidebar is 349 px
+     wide and 383 px tall on the machine this was built for: an em-based gutter
+     took 59 px of the width and the strip and its padding 90 px of the height,
+     which is a sixth of the paper spent on margins.  The gutter is 8 px, the
+     space above the strip 6 px, and the sheet gets the rest. */
+  gap: 0.7em;
+  padding: 6px 8px 10px;
+  /* The root IS the pane: a fixed column holding a strip, a sheet and a band.
+     It fills the height rather than hugging its content, so the sheet has a
+     height to be centred in and the band has a height to scroll inside. */
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ...except when the band's share would be too small to be worth scrolling,
+   where the column grows and the view scrolls instead. */
+.tufte-map-root.tufte-map-compact.tufte-map-band-tight {
+  height: auto;
+  min-height: 100%;
+}
+
+/* The sheet takes the height that is going and centres its paper in it.  A
+   frame is wider than it is tall and a sidebar is taller than it is wide, so
+   one of the two dimensions is always slack; a map pinned to the top of a
+   pane with a hand's breadth of nothing under it reads as a mistake. */
+.tufte-map-root.tufte-map-compact .tufte-map-sheet {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* With the band open the sheet stops absorbing the slack and keeps exactly the
+   size it already had — the band takes what is left. */
+.tufte-map-root.tufte-map-compact.tufte-map-details-on .tufte-map-sheet {
+  flex: 0 0 auto;
+}
+
+/* The band is one column in compact, whatever the width query said, and it is
+   the part that scrolls: it takes the height the sheet left and reads by
+   scrolling inside itself, so neither the strip nor the sheet moves when it
+   opens. */
+.tufte-map-compact .tufte-map-margin {
+  display: flex;
+  flex-direction: column;
+  grid-template-columns: none;
+  grid-template-areas: none;
+  gap: 1em;
+  max-width: 100%;
+  position: static;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.tufte-map-compact.tufte-map-band-tight .tufte-map-margin {
+  flex: 0 0 auto;
+  overflow-y: visible;
+}
+
+/* The reading guide is the full presentation's; the compact band gets the one
+   line instead, and the other way round. */
+.tufte-map-hint {
+  margin: 0;
+  color: var(--tufte-map-faint);
+  font-style: italic;
+}
+
+.tufte-map-full .tufte-map-hint,
+.tufte-map-compact .tufte-map-guide {
+  display: none;
+}
+
+/* In compact the VIEW does not scroll: it is a fixed box holding a strip, a
+   sheet and a band, and the band is the one that scrolls inside itself.  A
+   scrollbar on the view would take fifteen pixels off the sheet's width the
+   moment the details opened — the squeeze again, by a different route — and
+   this Electron's scrollbars are classic, not overlay.  The one exception is a
+   pane too short to give the band a usable height; the view then scrolls and
+   says so with a class. */
+.tufte-map-pane.tufte-map-view.tufte-map-view-compact {
+  overflow: hidden;
+}
+
+.tufte-map-pane.tufte-map-view.tufte-map-view-compact.tufte-map-view-tight {
+  overflow: auto;
+}
+
+/* Obsidian's own `.view-content` carries 12 px of padding on every side, at a
+   specificity a single class cannot beat.  Twenty-four pixels is seven per
+   cent of a 349 px sidebar, spent on nothing; the root's own 8 px gutters are
+   the gutters this view wants.  Beating it needs three classes on the element
+   that carries the padding, and all three are OURS — `tufte-map-pane` exists
+   for no other reason than to be the third, because styling a class this
+   plugin does not own is how a plugin breaks an app it did not write. */
+.tufte-map-pane.tufte-map-view.tufte-map-view-compact {
+  padding: 0;
+}
+
+/* Hidden details: the band is gone in compact, the column is gone in full and
+   the sheet takes the width it left behind. */
+.tufte-map-root:not(.tufte-map-details-on) .tufte-map-margin {
+  display: none;
+}
+
+.tufte-map-root.tufte-map-full:not(.tufte-map-details-on) .tufte-map-sheet {
+  flex: 1 1 100%;
+  max-width: 100%;
+}
+
+/* A browser without container queries gets the stacked layout at one column,
+   which works at every width — the queries are an improvement, not a
+   requirement. */
+
+/* --------------------------------------------------------------------------
+ * 2. The sheet
+ *
+ * The <svg> element carries the six theme colours as custom properties, set
+ * on it by the renderer from the values the theme actually computed, and the
+ * rules below are the same for every sheet.
+ * ----------------------------------------------------------------------- */
+
+.tufte-map-paper {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.tufte-map-contour,
+.tufte-map-leader,
+.tufte-map-alllink,
+.tufte-map-bridge,
+.tufte-map-hotlink {
+  fill: none;
+  /* Hairlines are specified in CSS pixels and must stay hairlines whatever
+     the viewBox is doing. */
+  vector-effect: non-scaling-stroke;
+}
+
+.tufte-map-dot {
+  /* An SVG `fill` attribute containing var() is ignored outright, so the mix
+     that puts a note on the warm-grey ramp has to happen in CSS.  The rank
+     arrives as --k on the circle itself. */
+  fill: color-mix(in srgb, var(--tufte-map-dot-hi) calc(var(--k, 0) * 100%), var(--tufte-map-dot-lo));
+  stroke: var(--tufte-map-bg);
+  paint-order: stroke;
+}
+
+.tufte-map-dot-anchor {
+  fill: var(--tufte-map-accent);
+}
+
+/* A non-summit dot's strength follows its centrality, which arrives as --c on
+   the circle (0 = least linked, 1 = most; see dotCentrality).  It is the
+   element's OPACITY — group opacity, fill and ring composited first and then
+   faded together — and not fill-opacity: the dot is painted stroke-first with
+   a paper-coloured ring, and a translucent fill alone would let that ring show
+   through the fill's inner half as a pale annulus inside every dot.
+   Specificity (0,2,0): the hover and filter rules below are (0,3,0) and later,
+   so both still win over it. */
+.tufte-map-dot:not(.tufte-map-dot-anchor) {
+  opacity: calc(var(--tufte-map-dot-alpha-lo) +
+    (var(--tufte-map-dot-alpha-hi) - var(--tufte-map-dot-alpha-lo)) * var(--c, 1));
+}
+
+.tufte-map-label {
+  paint-order: stroke;
+  stroke: var(--tufte-map-bg);
+  stroke-linejoin: round;
+}
+
+.tufte-map-label-summit { fill: var(--tufte-map-ink); }
+.tufte-map-label-numeral { fill: var(--tufte-map-accent); }
+.tufte-map-label-minor { fill: var(--tufte-map-muted); font-style: italic; }
+
+/* The hovered note's name, set by the view beside its dot in place of a
+   pop-up: a minor label's italic and paper halo, but in ink — it is the note
+   in focus, not one of the many.  It never takes the pointer, so it cannot
+   steal the hover from the dot it names. */
+.tufte-map-hover-name {
+  fill: var(--tufte-map-ink);
+  font-style: italic;
+  paint-order: stroke;
+  stroke: var(--tufte-map-bg);
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.tufte-map-hot-ring {
+  stroke: var(--tufte-map-ink);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.tufte-map-here-ring {
+  stroke: var(--tufte-map-accent);
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+
+/* -- the tiers ------------------------------------------------------------
+ * Obsidian's graph view fades its labels in as you zoom rather than popping
+ * them; so does the sheet, per tier.  The tier's opacity is on the GROUP and
+ * the hover/filter dimming stays on the label, because nested opacity
+ * multiplies and two rules on one element do not.
+ * ----------------------------------------------------------------------- */
+
+.tufte-map-tier {
+  transition: opacity var(--tufte-map-fade) ease-out;
+}
+
+/* A loose numeral is the mark a summit keeps when its name has moved away or
+   faded out: smaller than the name, in the same red, never faded. */
+.tufte-map-label-numeral-loose {
+  letter-spacing: 0.04em;
+}
+
+/* -- fading -------------------------------------------------------------- */
+
+/* Everything that can be dimmed transitions the one property that dims it,
+   and nothing else on the sheet transitions at all: a map that slides is a
+   map the reader has to wait for. */
+.tufte-map-dot,
+.tufte-map-label,
+.tufte-map-leader,
+.tufte-map-bridge {
+  transition: opacity var(--tufte-map-fade) ease-out;
+}
+
+/* Order matters and is load-bearing.  An element that is neither lit nor kept
+   matches both rules, and the filter's — the stronger statement, "this note
+   is not on the map right now" — is written second so it wins the cascade. */
+.tufte-map-has-hot .tufte-map-dot:not(.tufte-map-lit),
+.tufte-map-has-hot .tufte-map-label:not(.tufte-map-lit),
+.tufte-map-has-hot .tufte-map-leader:not(.tufte-map-lit),
+.tufte-map-has-hot .tufte-map-bridge {
+  opacity: var(--tufte-map-dim-hot);
+}
+
+/* A lit dot — the hovered note and its neighbours — rises to full strength
+   out of the centrality band, so the hover reads clearly against the rest.
+   (0,3,0), the same as the filter's dimming rule, and written BEFORE it, so a
+   lit dot that the filter has taken off the map is still dimmed; the
+   keep-and-lit rule at (0,4,0) below restores the ones that survive. */
+.tufte-map-has-hot .tufte-map-dot.tufte-map-lit {
+  opacity: 1;
+}
+
+.tufte-map-has-filter .tufte-map-dot:not(.tufte-map-keep),
+.tufte-map-has-filter .tufte-map-label:not(.tufte-map-keep),
+.tufte-map-has-filter .tufte-map-leader:not(.tufte-map-keep),
+.tufte-map-has-filter .tufte-map-bridge:not(.tufte-map-keep) {
+  opacity: var(--tufte-map-dim-filter);
+}
+
+/* A note that survives the filter and is lit by the pointer is at full
+   strength whatever either rule above said. */
+.tufte-map-has-filter .tufte-map-dot.tufte-map-keep.tufte-map-lit,
+.tufte-map-has-filter .tufte-map-label.tufte-map-keep.tufte-map-lit,
+.tufte-map-has-filter .tufte-map-leader.tufte-map-keep.tufte-map-lit {
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------------------
+ * Reduced motion
+ * ----------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .tufte-map-view {
+    --tufte-map-fade: 0ms;
+  }
+
+  .tufte-map-tier,
+  .tufte-map-dot,
+  .tufte-map-label,
+  .tufte-map-leader,
+  .tufte-map-bridge {
+    transition: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Under a theme that is not Tufte
+ *
+ * Every colour above already falls back to an Obsidian token, so the sheet is
+ * legible anywhere.  Two things still need saying, because they are judgements
+ * rather than colours: a theme with no accent of its own would print the
+ * summit numerals in the body colour and lose the map's one red, and a theme
+ * whose rules are invisible would leave the margin column's headings floating.
+ * ----------------------------------------------------------------------- */
+
+.tufte-map-view:not([style*="--tufte-ink"]) {
+  --tufte-map-accent: var(--tufte-accent, var(--text-accent, #a00000));
+  --tufte-map-rule: var(--tufte-rule, var(--background-modifier-border, currentColor));
+}
+
+.theme-dark .tufte-map-view {
+  /* Ink on a dark ground reads heavier than ink on paper, so the faded states
+     are lifted a little rather than being dimmed to the same fraction. */
+  --tufte-map-dim-hot: 0.28;
+  --tufte-map-dim-filter: 0.14;
+  /* On dark paper "lighter" in weight means nearer the paper, not brighter:
+     the ramp runs from the dark palette's faint warm grey to its muted one,
+     where it used to climb all the way to the ink. */
+  --tufte-map-dot-lo: var(--tufte-faint, #908b7a);
+  --tufte-map-dot-hi: var(--tufte-muted, #a59f8c);
+}

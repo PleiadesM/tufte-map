@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>Tufte Map — preview</title>
+<link rel="stylesheet" href="tokens.css">
+<!-- The sheet's own rules moved out of the <svg> and into the plugin's
+     stylesheet in stage 2, so the static preview has to load it too. -->
+<script src="paths.js"></script>
+<script>document.write('<link rel="stylesheet" href="' + window.__TUFTE_PLUGIN + 'styles.css">');</script>
+<style>
+  html, body {
+    margin: 0;
+    background: var(--tufte-bg);
+    color: var(--tufte-ink);
+    font-family: "et-book", Palatino, Georgia, serif;
+  }
+  .bar {
+    display: flex; gap: 1.5rem; align-items: baseline; flex-wrap: wrap;
+    padding: 0.8rem 1.2rem;
+    border-bottom: 1px solid var(--tufte-rule);
+    font-size: 0.9rem;
+  }
+  .bar label { color: var(--tufte-muted); }
+  .bar button, .bar select {
+    font-family: inherit; font-size: inherit;
+    background: var(--tufte-bg-alt); color: var(--tufte-ink);
+    border: 1px solid var(--tufte-rule); padding: 0.15rem 0.6rem;
+  }
+  #timing { color: var(--tufte-faint); font-style: italic; }
+  .sheet-wrap { padding: 1.2rem; }
+  /* The pane the map is drawn into.  Its width is what `sheetWidthPt` is
+     derived from, and its computed font is what the measurer measures, so it
+     stands in for an Obsidian leaf exactly. */
+  #pane {
+    margin: 0 auto;
+    background: var(--tufte-bg);
+    color: var(--tufte-ink);
+    font-family: "et-book", Palatino, Georgia, serif;
+  }
+  .head { padding: 0 0 0.6rem 0; }
+  .head h1 { font-size: 1.5rem; font-weight: normal; margin: 0 0 0.2rem 0; }
+  .head p { margin: 0; font-size: 0.75rem; font-style: italic; color: var(--tufte-muted); }
+  .foot { padding: 0.6rem 0 0 0; font-size: 0.68rem; font-style: italic; color: var(--tufte-faint); }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <strong>Tufte Map</strong>
+    <span><label for="mode">mode</label> <select id="mode">
+      <option value="light">light</option>
+      <option value="dark">dark</option>
+    </select></span>
+    <span><label for="width">pane</label> <select id="width">
+      <option value="600">600 px</option>
+      <option value="900" selected>900 px</option>
+      <option value="1300">1300 px</option>
+    </select></span>
+    <span><label for="minor">names</label> <select id="minor">
+      <option value="30" selected>30</option>
+      <option value="60">60</option>
+      <option value="120">120</option>
+    </select></span>
+    <button id="redraw">redraw</button>
+    <span id="timing">…</span>
+  </div>
+  <div class="sheet-wrap">
+    <div id="pane" class="tufte-map-view">
+      <div class="head">
+        <h1>Knowledge Map</h1>
+        <p id="subtitle"></p>
+      </div>
+      <div id="sheet"></div>
+      <div class="foot" id="footer"></div>
+    </div>
+  </div>
+  <script src="obsidian-stub.js"></script>
+  <script>document.write('<script src="' + window.__TUFTE_PLUGIN + 'main.js"><\/script>');</script>
+  <script src="preview.js"></script>
+</body>
+</html>

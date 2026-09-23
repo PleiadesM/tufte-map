@@ -1,0 +1,18 @@
+# Obsidian runtime state — written by the plugin inside a vault, never source
+data.json
+
+# An excerpt of Obsidian's own app.css the browser test page can load; it is
+# not ours to distribute, so it stays in the development vault
+dev/preview/obsidian-like.css
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+__pycache__/
+
+# Scratch
+*.log
+tmp/

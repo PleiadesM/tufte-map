@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>Tufte Map — the plugin, in a browser</title>
+<link rel="stylesheet" href="tokens.css">
+<!-- Obsidian's own form-field and button rules, copied verbatim with their
+     specificity intact, and loaded BEFORE the plugin's stylesheet exactly as
+     the app loads them.  Without this the harness flatters every override we
+     write. -->
+<link rel="stylesheet" href="obsidian-like.css">
+<script src="paths.js"></script>
+<script>
+  /* The two files under development are loaded with a cache buster.  A plain
+     static server sends no cache headers, so the browser is free to invent a
+     freshness lifetime — and it does, which means an edit to styles.css or
+     main.js can be looked at, judged and reported on without ever having been
+     loaded.  That happened once already; it will not happen twice. */
+  window.__TUFTE_CB = "?t=" + Date.now();
+  document.write('<link rel="stylesheet" href="' + window.__TUFTE_PLUGIN + 'styles.css' + window.__TUFTE_CB + '">');
+</script>
+<style>
+  /* Everything in this block belongs to the HARNESS, not to the plugin: the
+     bar of controls, the log, the box the pane is pretending to be.  The
+     plugin's own appearance comes entirely from ../plugin/styles.css. */
+  html, body {
+    margin: 0;
+    background: var(--tufte-bg);
+    color: var(--tufte-ink);
+    /* The two faces Obsidian sets, named the way it names them: the interface
+       face dresses the chrome and every leaf, the text face is the reading
+       one.  A view that wants to be a document has to ask for the text face. */
+    --font-interface: "Gill Sans", "Gill Sans MT", Helvetica, Arial, sans-serif;
+    --font-text: "et-book", Palatino, Georgia, serif;
+    font-family: var(--font-interface);
+  }
+  .bar {
+    display: flex; gap: 1.4rem; align-items: baseline; flex-wrap: wrap;
+    padding: 0.7rem 1.1rem;
+    border-bottom: 1px solid var(--tufte-rule);
+    font-size: 0.85rem;
+    position: sticky; top: 0; z-index: 10;
+    background: var(--tufte-bg);
+  }
+  .bar label { color: var(--tufte-muted); }
+  .bar button, .bar select {
+    font-family: inherit; font-size: inherit;
+    background: var(--tufte-bg-alt); color: var(--tufte-ink);
+    border: 1px solid var(--tufte-rule); padding: 0.15rem 0.6rem;
+  }
+  #facts { color: var(--tufte-faint); font-style: italic; }
+
+  .stage { display: flex; align-items: flex-start; gap: 1rem; padding: 1rem; }
+
+  /* The pane stands in for an Obsidian leaf: a box of a known width, with the
+     view's own container filling it.  The container query in the plugin's
+     stylesheet reads THIS width, which is the whole point of the control. */
+  #pane {
+    width: 900px;
+    flex: 0 0 auto;
+    border: 1px solid var(--tufte-rule);
+    background: var(--tufte-bg);
+    overflow: hidden;
+  }
+  /* A sidebar leaf has a FIXED height and the view fills it; the sheet has to
+     fit that box without asking for a scrollbar, which is the whole of what
+     the sidebar steps below are about. */
+  #pane.sized { display: flex; }
+  #pane.sized .harness-leaf,
+  #pane.sized .workspace-leaf-content,
+  #pane.sized .view-content { height: 100%; flex: 1 1 auto; min-height: 0; }
+  .harness-leaf { display: block; }
+  .harness-leaf .workspace-leaf-content { display: block; }
+  .harness-leaf .view-content { display: block; }
+
+  .side { flex: 1 1 320px; min-width: 260px; font-size: 0.78rem; }
+  .side h2 {
+    font-size: 0.72rem; font-weight: normal; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--tufte-muted);
+    margin: 0 0 0.3rem; padding-bottom: 0.2rem;
+    border-bottom: 1px solid var(--tufte-rule);
+  }
+  #log {
+    max-height: 16rem; overflow: auto; font-family: ui-monospace, Menlo, monospace;
+    font-size: 0.68rem; line-height: 1.5; color: var(--tufte-muted);
+    white-space: pre-wrap;
+  }
+  #settings-host { margin-top: 1rem; }
+  #settings-host .setting-item {
+    display: flex; gap: 1rem; align-items: flex-start;
+    padding: 0.5rem 0; border-top: 1px solid var(--tufte-rule);
+  }
+  #settings-host .setting-item-info { flex: 1 1 auto; }
+  #settings-host .setting-item-name { color: var(--tufte-ink); }
+  #settings-host .setting-item-description {
+    color: var(--tufte-muted); font-size: 0.92em; font-style: italic;
+  }
+  #settings-host .setting-item-control { flex: 0 0 auto; }
+  #settings-host textarea { min-width: 12rem; min-height: 4rem; }
+  #selftest-result {
+    margin-top: 1rem; max-height: 22rem; overflow: auto;
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.66rem;
+    white-space: pre; color: var(--tufte-muted);
+  }
+</style>
+</head>
+<body class="theme-light">
+  <div class="bar">
+    <strong>Tufte Map — harness</strong>
+    <span><label for="mode">theme</label>
+      <select id="mode">
+        <option value="light">light</option>
+        <option value="dark">dark</option>
+      </select></span>
+    <span><label for="width">container</label>
+      <select id="width">
+        <option value="sidebar-real">sidebar real 349x383</option>
+        <option value="sidebar">sidebar 436x470</option>
+        <option value="sidebar-tall">sidebar tall 300x760</option>
+        <option value="560">560 px</option>
+        <option value="884">884 px</option>
+        <option value="900" selected>900 px</option>
+        <option value="1300">1300 px</option>
+      </select></span>
+    <span><label for="side">side split</label>
+      <input id="side" type="checkbox"></span>
+    <!-- Obsidian's base font size, which the reader sets and which the view
+         inherits.  19 px is what the first real install ran at, and it is the
+         reason the margin column's type came out a third too large. -->
+    <span><label for="basefont">base font</label>
+      <select id="basefont">
+        <option value="16" selected>16 px</option>
+        <option value="19">19 px</option>
+        <option value="22">22 px</option>
+      </select></span>
+    <button id="grow" type="button">fire resolved with 10 new notes</button>
+    <button id="settings" type="button">open settings tab</button>
+    <span id="facts">booting…</span>
+  </div>
+
+  <div class="stage">
+    <div id="pane"></div>
+    <div class="side">
+      <h2>workspace log</h2>
+      <div id="log"></div>
+      <div id="settings-host"></div>
+      <pre id="selftest-result"></pre>
+    </div>
+  </div>
+
+  <script src="obsidian-stub.js"></script>
+  <script>document.write('<script src="' + window.__TUFTE_PLUGIN + 'main.js' + window.__TUFTE_CB + '"><\/script>');</script>
+  <script>document.write('<script src="selftest.js' + window.__TUFTE_CB + '"><\/script>');</script>
+  <script>document.write('<script src="app.js' + window.__TUFTE_CB + '"><\/script>');</script>
+</body>
+</html>
