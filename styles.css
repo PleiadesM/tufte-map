@@ -521,9 +521,12 @@
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
-  text-decoration: underline;
-  text-decoration-color: var(--tufte-map-rule);
-  text-underline-offset: 0.22em;
+  /* The underline is a hairline bottom border, not a coloured
+     text-decoration: Obsidian's plugin review lints text-decoration-color as
+     only partly supported, and a border draws the same one-pixel rule in the
+     same colours without the question. */
+  text-decoration: none;
+  border-bottom: 1px solid var(--tufte-map-rule);
   cursor: pointer;
 }
 
@@ -531,7 +534,7 @@
   background: none;
   box-shadow: none;
   color: var(--tufte-map-ink);
-  text-decoration-color: var(--tufte-map-muted);
+  border-bottom-color: var(--tufte-map-muted);
 }
 
 .tufte-map-text-control:focus-visible {
@@ -541,7 +544,7 @@
 
 .tufte-map-text-control.tufte-map-on {
   color: var(--tufte-map-accent);
-  text-decoration-color: var(--tufte-map-accent);
+  border-bottom-color: var(--tufte-map-accent);
 }
 
 /* ...and the same specificity argument as the Find field, for the same
@@ -561,6 +564,7 @@
   margin: 0;
   padding: 0;
   border: none;
+  border-bottom: 1px solid var(--tufte-map-rule);
   border-radius: 0;
   background: none;
   background-color: transparent;
@@ -573,9 +577,16 @@
   cursor: pointer;
 }
 
+/* The underline now lives in the border these rules set, so the "on" red
+   has to be said at their weight too: (0,4,1), and before the hover rule so
+   a hovered toggle still reads as hovered. */
+.tufte-map-view .tufte-map-root button.tufte-map-text-control.tufte-map-on {
+  border-bottom-color: var(--tufte-map-accent);
+}
+
 .tufte-map-view .tufte-map-root button.tufte-map-text-control:hover {
   color: var(--tufte-map-ink);
-  text-decoration-color: var(--tufte-map-muted);
+  border-bottom-color: var(--tufte-map-muted);
 }
 
 .tufte-map-view .tufte-map-root button.tufte-map-text-control:focus-visible {
@@ -619,8 +630,9 @@
       "find    summits"
       "folders show"
       "foot    foot";
-    column-gap: 2.4em;
-    row-gap: 1.2em;
+    /* Rows, then columns.  The shorthand, because the plugin review's lint
+       files a bare column-gap under multi-column layout even in a grid. */
+    gap: 1.2em 2.4em;
     align-items: start;
   }
 

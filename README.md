@@ -64,5 +64,7 @@ MIT — see [LICENSE](LICENSE).
 
 ## Changelog
 
+- **0.1.1** (2026-09-23)
+  - Clear the review's CSS lint warnings
 - **0.1.0** (2026-09-23)
   - First release
