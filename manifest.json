@@ -1,9 +1,9 @@
 {
   "id": "tufte-map",
   "name": "Tufte Map",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "minAppVersion": "1.4.0",
-  "description": "Draws the vault's link graph as a contour map: notes that link to one another lie close together, the land rises where notes are dense, and each summit is named after its most connected note. Styled by the Tufte theme.",
+  "description": "Draws the vault's link graph as a contour map: notes that link to one another lie close together, the land rises where notes are dense, and each summit is named after its most important note. Styled by the Tufte theme.",
   "author": "Daocheng Lin",
   "authorUrl": "https://github.com/PleiadesM",
   "isDesktopOnly": false

@@ -39,21 +39,21 @@
   --tufte-map-fade: 120ms;
 
   /* The strength of a non-summit dot runs from the first number (the least
-     linked note) to the second (the most), by its centrality; a summit anchor
-     is always at full strength.  A narrow band on purpose: every dot must
-     still read as a dot, and the degree ramp already carries most of the
-     difference in colour. */
+     important note) to the second (the most), by its importance; a summit
+     anchor is always at full strength.  A narrow band on purpose: every dot
+     must still read as a dot, and the colour ramp already carries most of
+     the difference. */
   --tufte-map-dot-alpha-lo: 0.66;
   --tufte-map-dot-alpha-hi: 0.80;
 
-  /* ...and its colour runs between two WARM greys, the theme's own family
-     (HSL 45°, 12%: the plate caption's --tufte-muted-warm and the dark
-     palette's muted), from the lighter for the least linked note to the
-     deeper for the most.  Lighter than the old muted-to-ink ramp on purpose:
-     the ordinary notes are the ground of the map, the red summits its
-     figure, and a near-black hub dot competed with the red for the eye. */
+  /* ...and its colour runs by importance from a WARM grey, the theme's own
+     family (HSL 45°, 12%), for the least important note, to the map's one
+     red, the accent, for the most.  The ramp is bent (--k is importance to
+     a power above one) so the ordinary notes stay the grey ground of the
+     map and only the important few turn red; the summit anchors stay at the
+     full accent, the figure. */
   --tufte-map-dot-lo: #a59f8c;
-  --tufte-map-dot-hi: var(--tufte-muted-warm, #6d6755);
+  --tufte-map-dot-hi: var(--tufte-map-accent);
 
   /* The pane's width, not the window's, decides the layout: a map in a narrow
      sidebar and a map in a wide tab are the same plugin and must not need the
@@ -842,8 +842,8 @@
 
 .tufte-map-dot {
   /* An SVG `fill` attribute containing var() is ignored outright, so the mix
-     that puts a note on the warm-grey ramp has to happen in CSS.  The rank
-     arrives as --k on the circle itself. */
+     that puts a note on the grey-to-red ramp has to happen in CSS.  Its
+     place on the ramp arrives as --k on the circle itself. */
   fill: color-mix(in srgb, var(--tufte-map-dot-hi) calc(var(--k, 0) * 100%), var(--tufte-map-dot-lo));
   stroke: var(--tufte-map-bg);
   paint-order: stroke;
@@ -853,8 +853,8 @@
   fill: var(--tufte-map-accent);
 }
 
-/* A non-summit dot's strength follows its centrality, which arrives as --c on
-   the circle (0 = least linked, 1 = most; see dotCentrality).  It is the
+/* A non-summit dot's strength follows its importance, which arrives as --c on
+   the circle (0 = least important, 1 = most; see dotCentrality).  It is the
    element's OPACITY — group opacity, fill and ring composited first and then
    faded together — and not fill-opacity: the dot is painted stroke-first with
    a paper-coloured ring, and a translucent fill alone would let that ring show
@@ -1002,9 +1002,8 @@
      are lifted a little rather than being dimmed to the same fraction. */
   --tufte-map-dim-hot: 0.28;
   --tufte-map-dim-filter: 0.14;
-  /* On dark paper "lighter" in weight means nearer the paper, not brighter:
-     the ramp runs from the dark palette's faint warm grey to its muted one,
-     where it used to climb all the way to the ink. */
+  /* On dark paper the ground end is the dark palette's faint warm grey, which
+     sits nearer the paper; the figure end is the same accent red. */
   --tufte-map-dot-lo: var(--tufte-faint, #908b7a);
-  --tufte-map-dot-hi: var(--tufte-muted, #a59f8c);
+  --tufte-map-dot-hi: var(--tufte-map-accent);
 }

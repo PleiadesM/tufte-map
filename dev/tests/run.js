@@ -136,7 +136,7 @@ function auditWith(model, layout, mapPerPt) {
   const halo = pt(Core.constants.HALO_LW_PT / 2);
   const clear = pt(Core.constants.SUMMIT_CLEAR_PT);
   const discs = model.nodes.map(function (n) {
-    return [n.x, n.y, pt(Core.markerRadiusPt(n.deg)) + pt(Core.constants.DOT_RING_LW_PT / 2)];
+    return [n.x, n.y, pt(Core.markerRadiusPt(n.importance)) + pt(Core.constants.DOT_RING_LW_PT / 2)];
   });
   const L = layout.labels;
   let overlaps = 0, touches = 0, leaderHits = 0, summitCovers = 0, summitCrowd = 0;
@@ -448,7 +448,10 @@ async function main() {
         const mustNamed = minor.filter(function (l) { return l.mustName; }).length;
         const ranked = model.nodes.map(function (n, i) { return i; })
           .filter(function (i) { return model.nodes[i].summit === null; })
-          .sort(function (x, y) { return model.nodes[y].deg - model.nodes[x].deg || (model.nodes[x].path < model.nodes[y].path ? -1 : 1); })
+          .sort(function (x, y) {
+            const a = model.nodes[x], b = model.nodes[y];
+            return b.importance - a.importance || b.deg - a.deg || (a.path < b.path ? -1 : 1);
+          })
           .slice(0, 14);
         const printed = new Set(minor.map(function (l) { return l.note; }));
         const missing = ranked.filter(function (i) { return !printed.has(i); });
@@ -1008,7 +1011,8 @@ async function main() {
     // The view and the settings tab exist and say who they are.
     assert.strictEqual(V.VIEW_TYPE, "tufte-map-view");
     assert.deepStrictEqual(Object.keys(V.DEFAULT_SETTINGS).sort(),
-      ["detailsCompact", "detailsFull", "excludeFolders", "namedNotes", "openIn",
+      ["detailsCompact", "detailsFull", "dotSize", "excludeFolders", "importanceInbound",
+        "importanceLength", "importanceOutbound", "importanceRecency", "namedNotes", "openIn",
         "showAllLinks", "showBridges", "textFadeThreshold"]);
     assert.strictEqual(typeof V.TufteMapView, "function");
     assert.strictEqual(typeof V.TufteMapSettingTab, "function");
@@ -1114,6 +1118,22 @@ async function main() {
       q.saveData = function () { return Promise.resolve(); };
       await q.loadState();
       assert.strictEqual(q.settings.showBridges, true, "showBridges does not default to on");
+    }
+    // The slider settings take finite numbers only, clamped to the slider's
+    // range; a word, a NaN, a numeric STRING all fall back to the default.
+    {
+      const p = Object.create(H.plugin.prototype);
+      p.loadData = function () {
+        return Promise.resolve({ settings: { dotSize: "huge", importanceInbound: NaN,
+          importanceOutbound: 1e9, importanceLength: -3, importanceRecency: "2" } });
+      };
+      p.saveData = function () { return Promise.resolve(); };
+      await p.loadState();
+      const s = p.settings;
+      assert.deepStrictEqual(
+        [s.dotSize, s.importanceInbound, s.importanceOutbound, s.importanceLength, s.importanceRecency],
+        [1, 5, 10, 0, 0], "the slider settings were not sanitised");
+      assert.deepStrictEqual(p.importanceWeights(), { inbound: 5, outbound: 10, length: 0, recency: 0 });
     }
     note("loadState() copies the known settings (showBridges among them) and nothing else; no prototype is moved");
   });
@@ -1293,8 +1313,8 @@ async function main() {
       const dots = findAll(host, function (e) {
         return e.name === "circle" && /tufte-map-dot/.test(e.attrs["class"] || "");
       });
-      const biggest = model.nodes.reduce(function (a, b) { return b.deg > a.deg ? b : a; });
-      const want = +(Core.markerRadiusPt(biggest.deg) * s).toFixed(3);
+      const biggest = model.nodes.reduce(function (a, b) { return b.importance > a.importance ? b : a; });
+      const want = +(Core.markerRadiusPt(biggest.importance) * s).toFixed(3);
       assert.ok(dots.some(function (d) { return +d.attrs.r === want; }),
         w + "pt: no dot is drawn at the scaled radius " + want);
       const coast = findAll(host, function (e) {
@@ -1461,21 +1481,20 @@ async function main() {
           w + "pt: minor type below the 10 px floor");
       }
       // Flannery: the floor on the smallest, the ceiling on the largest, and
-      // the area law strictly between them.
+      // the flat ladder — a tenth from least to most important — between them.
       const sz = Core.dotSizing(model, L.scale, w, true);
-      const degs = model.nodes.map(function (n) { return n.deg; });
-      const rs = degs.map(function (d) { return Core.dotRadiusPt(d, L.scale, sz); });
+      const imps = model.nodes.map(function (n) { return n.importance; });
+      const rs = imps.map(function (v) { return Core.dotRadiusPt(v, L.scale, sz); });
       assert.ok(Math.min.apply(null, rs) >= C.DOT_MIN_RADIUS_PT - 1e-12,
         w + "pt: a dot fell below the 1.1 px floor");
       assert.ok(2 * Math.max.apply(null, rs) <= C.COMPACT_DOT_CAP_FRAC * w + 1e-9,
         w + "pt: the largest dot is over the ceiling");
-      const big = degs.reduce(function (a, b) { return Math.max(a, b); });
-      const mid = degs.filter(function (d) { return d > 1; }).sort(function (a, b) { return a - b; })[
-        Math.floor(degs.length / 2)] || 2;
-      const rBig = Core.dotRadiusPt(big, L.scale, sz), rMid = Core.dotRadiusPt(mid, L.scale, sz);
-      if (rMid > C.DOT_MIN_RADIUS_PT + 1e-9) {
-        assert.ok(Math.abs((rBig * rBig) / (rMid * rMid) - big / mid) < 1e-6,
-          w + "pt: the area law broke between the floor and the ceiling");
+      assert.ok(Math.max.apply(null, rs) / Math.min.apply(null, rs) <= 1 + C.DOT_SPREAD + 1e-9,
+        w + "pt: the most important dot is more than a tenth larger than the least");
+      for (let i = 0; i < imps.length; i++) {
+        const law = C.DOT_RADIUS_PT * (1 + C.DOT_SPREAD * imps[i]) * L.scale * sz.k;
+        if (law <= C.DOT_MIN_RADIUS_PT) continue;
+        assert.ok(Math.abs(rs[i] - law) < 1e-9, w + "pt: the flat ladder broke between the floor and the ceiling");
       }
       seen.push(w + "pt s=" + L.scale.toFixed(3) + " " + L.names + " names/" +
         L.numeralsOnly + " numerals/" + numerals.length + " marks");
@@ -1692,7 +1711,7 @@ async function main() {
   group("20. dot centrality", function () {
     const c = Core.dotCentrality(model.nodes);
     let lo = Infinity, hi = -Infinity, anchors = 0;
-    const byDeg = new Map();
+    const byImp = new Map();
     for (let i = 0; i < model.nodes.length; i++) {
       const n = model.nodes[i];
       if (n.summit !== null) {
@@ -1700,24 +1719,43 @@ async function main() {
         assert.strictEqual(c[i], undefined, "an anchor has a centrality");
         continue;
       }
+      assert.strictEqual(c[i], n.importance, "centrality is not the note's importance");
       assert.ok(c[i] >= 0 && c[i] <= 1, "centrality out of [0, 1]: " + c[i]);
       lo = Math.min(lo, c[i]); hi = Math.max(hi, c[i]);
-      if (byDeg.has(n.deg)) assert.strictEqual(byDeg.get(n.deg), c[i], "equal degree, unequal centrality");
-      else byDeg.set(n.deg, c[i]);
+      if (byImp.has(n.importance)) assert.strictEqual(byImp.get(n.importance), c[i], "equal importance, unequal centrality");
+      else byImp.set(n.importance, c[i]);
     }
-    const degs = Array.from(byDeg.keys()).sort(function (a, b) { return a - b; });
-    for (let k = 1; k < degs.length; k++) {
-      assert.ok(byDeg.get(degs[k]) >= byDeg.get(degs[k - 1]), "centrality falls with degree at " + degs[k]);
-    }
-    // Hand-checked: degrees 1, 1, 2, 5 -> (0 + .5)/3, (0 + .5)/3, 2/3, 3/3.
-    const toy = Core.dotCentrality([
-      { deg: 1, summit: null }, { deg: 2, summit: null }, { deg: 9, summit: 0 },
-      { deg: 1, summit: null }, { deg: 5, summit: null }]);
+    // Hand-checked toy, default weights (5, 5, 0, 0).  Link totals
+    // 5·in + 5·out = 5, 10, 45, 5, 25; ranked among ALL five (the anchor
+    // too), N − 1 = 4: the two 5s tie at (0 + 1/2)/4 = .125, 10 is 2/4 = .5,
+    // 25 is 3/4 = .75, 45 is 4/4 = 1.  One part, so the second ranking
+    // changes nothing; the anchor (index 2) gets no centrality.
+    const TOY = [
+      { degIn: 1, degOut: 0, deg: 1, size: 100, path: "a", summit: null },
+      { degIn: 1, degOut: 1, deg: 2, size: 300, path: "b", summit: null },
+      { degIn: 6, degOut: 3, deg: 9, size: 200, path: "c", summit: 0 },
+      { degIn: 0, degOut: 1, deg: 1, size: 400, path: "d", summit: null },
+      { degIn: 2, degOut: 3, deg: 5, size: 0, path: "e", summit: null }];
+    const toy = Core.dotCentrality(TOY);
     assert.deepStrictEqual(Array.from(toy, function (v) { return v === undefined ? null : +v.toFixed(6); }),
-      [0.166667, 0.666667, null, 0.166667, 1]);
-    assert.strictEqual(Core.dotCentrality([{ deg: 3, summit: null }])[0], 1, "a lone note is not central");
+      [0.125, 0.5, null, 0.125, 0.75]);
+    // Inbound 10, outbound 5: totals 10, 15, 75, 5, 35 — a backlink now
+    // outranks an outgoing link, so a (one in) passes d (one out): d 0,
+    // a 1/4, b 2/4, e 3/4, c 1.
+    const tw = Core.noteImportance(TOY, { inbound: 10, outbound: 5, length: 0, recency: 0 });
+    assert.deepStrictEqual(Array.from(tw), [0.25, 0.5, 1, 0, 0.75]);
+    // Links 10 + length 10: link percentiles .125, .5, 1, .125, .75; size
+    // percentiles (100, 300, 200, 400, 0) .25, .75, .5, 1, 0; averaged
+    // .1875, .625, .75, .5625, .375; ranked again a 0, e 1/4, d 2/4, b 3/4,
+    // c 1.
+    const tm = Core.noteImportance(TOY, { inbound: 5, outbound: 5, length: 10, recency: 0 });
+    assert.deepStrictEqual(Array.from(tm), [0, 0.75, 1, 0.5, 0.25]);
+    assert.strictEqual(Core.dotCentrality([{ deg: 3, degIn: 3, degOut: 0, summit: null }])[0], 1,
+      "a lone note is not central");
+    note("toy: defaults " + JSON.stringify(Array.from(toy, function (v) { return v === undefined ? null : v; })) +
+      "; in 10 / out 5 " + JSON.stringify(Array.from(tw)) + "; links + length " + JSON.stringify(Array.from(tm)));
     note(anchors + " anchors left out; " + (model.nodes.length - anchors) + " dots, centrality " +
-      lo.toFixed(3) + "–" + hi.toFixed(3) + " over " + degs.length + " distinct degrees; opacity " +
+      lo.toFixed(3) + "–" + hi.toFixed(3) + " over " + byImp.size + " distinct importances; opacity " +
       (0.66 + 0.14 * lo).toFixed(3) + "–" + (0.66 + 0.14 * hi).toFixed(3));
 
     // The renderer carries it as --c on non-anchor circles only.
@@ -1735,15 +1773,22 @@ async function main() {
       if (model.nodes[i].summit !== null) {
         assert.ok(!("--c" in el.styles), "an anchor carries --c");
       } else {
-        assert.strictEqual(el.styles["--c"], c[i].toFixed(4), "circle " + i + " has the wrong --c");
+        assert.strictEqual(el.styles["--c"], model.nodes[i].importance.toFixed(4), "circle " + i + " has the wrong --c");
       }
+      assert.strictEqual(el.styles["--k"],
+        Math.pow(model.nodes[i].importance, Core.constants.IMPORTANCE_RAMP_GAMMA).toFixed(4), "circle " + i + " has the wrong --k");
     }
     const css = fs.readFileSync(require("path").join(H.PLUGIN_DIR, "styles.css"), "utf8");
     assert.ok(/--tufte-map-dot-alpha-lo:\s*0\.66;/.test(css) && /--tufte-map-dot-alpha-hi:\s*0\.80;/.test(css),
       "styles.css does not carry the 0.66 / 0.80 tokens");
     assert.ok(/\.tufte-map-dot:not\(\.tufte-map-dot-anchor\)\s*\{\s*opacity:/.test(css),
       "no opacity rule for the non-anchor dots");
-    note("--c on " + (circles.length - anchors) + " circles, none on the " + anchors + " anchors; tokens 0.66 / 0.80 in styles.css");
+    const light = /\.tufte-map-view\s*\{[\s\S]*?--tufte-map-dot-hi:\s*([^;]+);/.exec(css);
+    const dark = /\.theme-dark \.tufte-map-view\s*\{[\s\S]*?--tufte-map-dot-hi:\s*([^;]+);/.exec(css);
+    assert.ok(light && light[1].trim() === "var(--tufte-map-accent)", "light --tufte-map-dot-hi is not the accent");
+    assert.ok(dark && dark[1].trim() === "var(--tufte-map-accent)", "dark --tufte-map-dot-hi is not the accent");
+    note("--c on " + (circles.length - anchors) + " circles, none on the " + anchors +
+      " anchors; --k = importance^" + Core.constants.IMPORTANCE_RAMP_GAMMA + " on all; tokens 0.66 / 0.80; dot-hi is the accent in both modes");
   });
 
   /* 21 ------------------------------------------------------------- */
@@ -1812,6 +1857,159 @@ async function main() {
     assert.ok(waterD === "M0 0H864.0V" + S.toFixed(1) + "H0Z" + landD, "the water clip is not sheet + coast");
     assert.strictEqual(V.coastClipPaths(doc, [], toSheet, 864, S, model.hash), null, "a coastless sheet was clipped");
     note("coast clips: " + ringCount + " rings in the land clip, water = sheet + rings (even-odd); ids unique across two draws");
+  });
+
+  /* 22 ------------------------------------------------------------- */
+  await groupAsync("22. importance", async function () {
+    const C = Core.constants;
+    // Non-decreasing in `key`, and equal keys give equal importance.
+    const monotone = function (nodes, key, what) {
+      const idx = nodes.map(function (_, i) { return i; })
+        .sort(function (a, b) { return nodes[a][key] - nodes[b][key]; });
+      for (let k = 1; k < idx.length; k++) {
+        const a = nodes[idx[k - 1]], b = nodes[idx[k]];
+        if (a[key] === b[key]) assert.strictEqual(a.importance, b.importance, what + ": equal " + key + ", unequal importance");
+        else assert.ok(b.importance >= a.importance, what + ": importance falls as " + key + " rises");
+      }
+    };
+
+    // The defaults reproduce the ranking by degree, ties included.
+    monotone(model.nodes, "deg", "defaults");
+    assert.deepStrictEqual(model.importance, Core.DEFAULT_IMPORTANCE, "the model does not record its weights");
+    // The six hubs are the six anchors, and each is the most important note
+    // of its own region.  (Not simply the six most important notes of the
+    // vault: Notebooks, at 45 links, is outranked by three 49-link notes that
+    // live on Cartography's and Typography's hills, not on a hill of their own.)
+    const anchorTitles = model.peaks.map(function (p) { return model.nodes[p.anchor].title; }).sort();
+    assert.deepStrictEqual(anchorTitles, TOPICS.slice().sort(), "the six hubs are not the six anchors");
+    for (let p = 0; p < model.peaks.length; p++) {
+      const a = model.nodes[model.peaks[p].anchor];
+      for (const n of model.nodes) {
+        if (n.region === p) assert.ok(n.importance <= a.importance, n.title + " outranks its summit " + a.title);
+      }
+    }
+    note("defaults: importance follows degree; the six hubs anchor the six summits and top their regions");
+
+    // Synthetic stats, deterministic in the path.
+    const hashNum = function (s, salt) {
+      let h = 0x811c9dc5 ^ salt;
+      for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+      return (h >>> 0) % 50000;
+    };
+    const statted = {
+      files: fx.files.map(function (f) {
+        return Object.assign({}, f, { size: hashNum(f.path, 1), mtime: 1.7e12 + hashNum(f.path, 2) * 1000 });
+      }),
+      resolvedLinks: fx.resolvedLinks
+    };
+    const byLen = await Core.computeMap(statted, { importance: { inbound: 0, outbound: 0, length: 10, recency: 0 } },
+      M, model.layoutPositions, null);
+    assert.strictEqual(byLen.hash, model.hash, "file stats reached the graph fingerprint");
+    assert.deepStrictEqual(byLen.importance, { inbound: 0, outbound: 0, length: 10, recency: 0 });
+    monotone(byLen.nodes, "size", "length only");
+    const nodes = byLen.nodes;
+    const apply = function (w) {
+      const v = Core.noteImportance(nodes, w);
+      return nodes.map(function (n, i) { return Object.assign({}, n, { importance: v[i] }); });
+    };
+    monotone(apply({ inbound: 0, outbound: 0, length: 0, recency: 10 }), "mtime", "recency only");
+    const zero = Core.noteImportance(nodes, { inbound: 0, outbound: 0, length: 0, recency: 0 });
+    assert.ok(Array.from(zero).every(function (v) { return v === 0.5; }), "all-zero weights do not give 0.5 everywhere");
+    const mixed = Core.noteImportance(nodes, { inbound: 7, outbound: 2, length: 4, recency: 9 });
+    assert.ok(Array.from(mixed).every(function (v) { return v >= 0 && v <= 1; }), "mixed weights left [0, 1]");
+    assert.deepStrictEqual(Core.noteImportance(nodes, { inbound: -1, outbound: NaN, length: "3", recency: 0 })[0], 0.5,
+      "hostile weights were not read as zero");
+    note("length only: monotone in size; recency only: monotone in mtime; all zero: 0.5 each; mixed in [0, 1]");
+
+    // rescoreModel re-anchors a summit without a relayout.
+    const m = Object.assign({}, model, {
+      nodes: model.nodes.map(function (n) { return Object.assign({}, n); }),
+      peaks: model.peaks.map(function (p) { return Object.assign({}, p); })
+    });
+    const tp = m.peaks.findIndex(function (p) { return p.name === "Typography"; });
+    assert.ok(tp >= 0, "no Typography summit");
+    const peakXY = m.peaks.map(function (p) { return [p.x, p.y]; });
+    const hill = m.nodes.map(function (_, i) { return i; })
+      .filter(function (i) { return m.nodes[i].region === tp && m.nodes[i].summit === null; });
+    // The note nearest the peak, so it is on the hill anchorPeaks searches,
+    // not merely in the region.
+    const P = m.peaks[tp];
+    const pick = hill.sort(function (a, b) {
+      return Math.hypot(m.nodes[a].x - P.x, m.nodes[a].y - P.y) - Math.hypot(m.nodes[b].x - P.x, m.nodes[b].y - P.y);
+    })[0];
+    for (let i = 0; i < m.nodes.length; i++) m.nodes[i].size = i === pick ? 1e6 : i;
+    Core.rescoreModel(m, { inbound: 0, outbound: 0, length: 10, recency: 0 });
+    assert.strictEqual(m.peaks[tp].anchor, pick, "the largest note did not become Typography's anchor");
+    assert.strictEqual(m.peaks[tp].name, m.nodes[pick].title, "the summit was not renamed after its new anchor");
+    assert.deepStrictEqual(m.peaks.map(function (p) { return [p.x, p.y]; }), peakXY, "a peak moved");
+    assert.strictEqual(m.peaks.reduce(function (s, p) { return s + p.count; }, 0), 505, "counts do not sum to 505");
+    const summitRefs = function () {
+      for (let i = 0; i < m.nodes.length; i++) {
+        const s = m.nodes[i].summit;
+        if (s !== null) assert.strictEqual(m.peaks[s].anchor, i, "a stale summit back-reference");
+      }
+      for (let p = 0; p < m.peaks.length; p++) {
+        if (m.peaks[p].anchor !== null) assert.strictEqual(m.nodes[m.peaks[p].anchor].summit, p, "an anchor without its summit");
+      }
+    };
+    summitRefs();
+    assert.deepStrictEqual(m.importance, { inbound: 0, outbound: 0, length: 10, recency: 0 });
+    const renamed = m.peaks[tp].name;
+    Core.rescoreModel(m, Core.DEFAULT_IMPORTANCE);
+    summitRefs();
+    assert.deepStrictEqual(m.peaks.map(function (p) { return p.name; }).sort(), TOPICS.slice().sort(),
+      "the defaults did not restore the six hub anchors");
+    note("rescore by length: Typography's summit -> '" + renamed + "', peaks unmoved, counts sum 505; defaults restore " +
+      m.peaks.map(function (p) { return p.name; }).join(", "));
+
+    // The flat ladder, and the reader's multiplier on it.
+    assert.ok(Math.abs(Core.markerRadiusPt(1) / Core.markerRadiusPt(0) - 1.1) < 1e-12, "the spread is not a tenth");
+    const r2 = Core.dotRadiusPt(0.5, 1, Core.dotSizing(model, 1, 864, false, 2));
+    const r1 = Core.dotRadiusPt(0.5, 1, Core.dotSizing(model, 1, 864, false, 1));
+    assert.ok(Math.abs(r2 - 2 * r1) < 1e-12, "dot size 2 does not double the radius");
+    assert.strictEqual(Core.dotSizing(model, 1, 864, false, 1).k, 1, "dot size 1 is not k = 1");
+    assert.strictEqual(Core.dotSizing(model, 1, 864, false, "huge").k, 1, "a non-number dot size was not read as 1");
+    note("radius " + Core.markerRadiusPt(0).toFixed(3) + "–" + Core.markerRadiusPt(1).toFixed(3) +
+      " pt; dot size 2 doubles it (" + r1.toFixed(3) + " -> " + r2.toFixed(3) + ")");
+
+    // Enter's best match: importance before degree.
+    const f = Core.filterNotes([
+      { title: "alpha low", path: "a.md", deg: 9, importance: 0.2, region: null },
+      { title: "alpha high", path: "b.md", deg: 2, importance: 0.9, region: null }], { query: "alpha" });
+    assert.strictEqual(f.best, 1, "the higher-degree note beat the more important one");
+
+    const D = H.plugin.__view.DEFAULT_SETTINGS;
+    assert.deepStrictEqual([D.dotSize, D.importanceInbound, D.importanceOutbound, D.importanceLength, D.importanceRecency],
+      [1, 5, 5, 0, 0], "the settings defaults moved");
+    note("filterNotes prefers importance; DEFAULT_SETTINGS carries dotSize 1 and weights 5 / 5 / 0 / 0");
+
+    // One debounce timer serves every setting, so the kinds asked for inside
+    // its window are COLLECTED: a weight slider followed by the dot-size
+    // slider must still rescore (a rescore re-places the labels too), and
+    // "links" is done beside whichever of them won.  Under Node there is no
+    // window; the plugin reaches its timers through one, so lend it ours.
+    const hadWindow = global.window;
+    global.window = { setTimeout: setTimeout, clearTimeout: clearTimeout };
+    try {
+      const p = Object.create(H.plugin.prototype);
+      const calls = [];
+      p.eachView = function (fn) { fn({ refreshFromSettings: function (w) { calls.push(w); } }); };
+      const settle = function () { return new Promise(function (r) { setTimeout(r, 550); }); };
+      p.debounceViews("importance"); p.debounceViews("names"); p.debounceViews("links");
+      await settle();
+      assert.deepStrictEqual(calls, ["importance", "links"], "the collected kinds came out as " + JSON.stringify(calls));
+      calls.length = 0;
+      p.debounceViews("names"); p.debounceViews("recompute"); p.debounceViews("importance");
+      await settle();
+      assert.deepStrictEqual(calls, ["recompute"], "a recompute did not absorb the rest: " + JSON.stringify(calls));
+      calls.length = 0;
+      p.debounceViews("names");
+      await settle();
+      assert.deepStrictEqual(calls, ["names"], "names alone came out as " + JSON.stringify(calls));
+      note("debounceViews collects: importance + names + links -> importance, links; names + recompute + importance -> recompute; names alone -> names");
+    } finally {
+      if (hadWindow === undefined) delete global.window; else global.window = hadWindow;
+    }
   });
 
   process.exit(report() === 0 ? 0 : 1);

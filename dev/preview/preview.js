@@ -40,7 +40,7 @@
     document.getElementById("subtitle").textContent =
       fixture.vault + " · " + model.counts.placed.toLocaleString() + " notes · " +
       model.counts.links.toLocaleString() + " links — elevation: density of notes; " +
-      "dot area: number of links";
+      "dot colour: importance";
     document.getElementById("footer").textContent =
       model.counts.isolates + " notes without links are not shown.";
   }

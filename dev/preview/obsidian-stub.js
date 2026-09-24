@@ -148,6 +148,7 @@
     }
     setName(v) { this.nameEl.textContent = v; return this; }
     setDesc(v) { this.descEl.textContent = v; return this; }
+    setHeading() { this.settingEl.classList.add("setting-item-heading"); return this; }
     _input(type) {
       const el = this._doc.createElement(type === "textarea" ? "textarea" : "input");
       if (type !== "textarea") el.setAttribute("type", type);

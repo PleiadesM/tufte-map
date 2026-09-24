@@ -143,7 +143,7 @@
         const i = +el.getAttribute("data-i");
         const op = +getComputedStyle(el).opacity;
         if (el.classList.contains("tufte-map-dot-anchor")) { anchorOp = Math.min(anchorOp, op); anchorsSeen++; }
-        else dotOp.push([view.model.nodes[i].deg, op]);
+        else dotOp.push([view.model.nodes[i].importance, op]);
       });
       dotOp.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
       let inBand = true, monotone = true, opLo = Infinity, opHi = -Infinity;
@@ -154,10 +154,11 @@
         if (k && op < dotOp[k - 1][1] - 1e-4) monotone = false;
         if (k && dotOp[k][0] === dotOp[k - 1][0] && Math.abs(op - dotOp[k - 1][1]) > 1e-4) monotone = false;
       }
-      // The colour: a warm-grey ramp, not grey to ink.  Every non-summit fill
-      // is warm (R >= G >= B, not neutral) and the least linked note sits at
-      // the ramp's light end, the theme's #a59f8c.
-      let warmAll = true, lightest = null, lightestDeg = Infinity;
+      // The colour: a ramp from the theme's warm grey #a59f8c, for the least
+      // important note, to the accent red, for the most.  Every fill stays
+      // warm (R >= G >= B), and green falls as importance rises — the red's
+      // green channel is the lowest of the three.
+      const fills = [];
       view.svg.querySelectorAll(".tufte-map-dot:not(.tufte-map-dot-anchor)").forEach(function (el) {
         // A color-mix() computes to `color(srgb r g b)` in 0..1, a plain
         // colour to `rgb(r, g, b)` in 0..255; bring both to 0..255.
@@ -165,20 +166,120 @@
         const unit = f.indexOf("color(srgb") === 0 ? 255 : 1;
         const rgb = (f.replace("color(srgb", "").match(/[\d.]+/g) || [])
           .slice(0, 3).map(function (v) { return Math.round(Number(v) * unit); });
-        if (!(rgb[0] >= rgb[1] && rgb[1] >= rgb[2] && rgb[0] - rgb[2] >= 8)) warmAll = false;
-        const d = view.model.nodes[+el.getAttribute("data-i")].deg;
-        if (d < lightestDeg) { lightestDeg = d; lightest = rgb; }
+        fills.push([view.model.nodes[+el.getAttribute("data-i")].importance, rgb]);
       });
-      step("non-summit dots are warm grey, lightest for the least linked",
-        "every non-anchor fill has R >= G >= B with some warmth, and a least-linked dot is rgb(165, 159, 140)",
-        warmAll && !!lightest && Math.abs(lightest[0] - 165) <= 1 &&
-        Math.abs(lightest[1] - 159) <= 1 && Math.abs(lightest[2] - 140) <= 1,
-        { warmAll: warmAll, lightest: lightest, lightestDegree: lightestDeg });
+      fills.sort(function (a, b) { return a[0] - b[0]; });
+      let warmAll = true, greenFalls = true;
+      for (let k = 0; k < fills.length; k++) {
+        const rgb = fills[k][1];
+        if (!(rgb[0] >= rgb[1] && rgb[1] >= rgb[2])) warmAll = false;
+        if (k && rgb[1] > fills[k - 1][1][1] + 1) greenFalls = false;
+      }
+      const least = fills.length ? fills[0][1] : null;
+      const most = fills.length ? fills[fills.length - 1][1] : null;
+      const redder = least && most ? (most[0] - most[1]) - (least[0] - least[1]) : 0;
+      step("non-summit dots run from warm grey to red by importance",
+        "the least important non-anchor dot is rgb(165, 159, 140) ± 1; the most important's R − G exceeds it by 60 or more; G never rises with importance (± 1); every fill has R >= G >= B",
+        warmAll && greenFalls && !!least && Math.abs(least[0] - 165) <= 1 &&
+        Math.abs(least[1] - 159) <= 1 && Math.abs(least[2] - 140) <= 1 && redder >= 60,
+        { warmAll: warmAll, greenFalls: greenFalls, least: least, most: most, redder: redder,
+          importance: fills.length ? [+fills[0][0].toFixed(3), +fills[fills.length - 1][0].toFixed(3)] : null });
 
-      step("non-summit dots draw at 0.66–0.80 by centrality, summits at full strength",
-        "every non-anchor dot's computed opacity lies in [0.66, 0.80] and never falls as degree rises (equal degree, equal opacity); every anchor is at 1",
+      step("non-summit dots draw at 0.66–0.80 by importance, summits at full strength",
+        "every non-anchor dot's computed opacity lies in [0.66, 0.80] and never falls as importance rises (equal importance, equal opacity); every anchor is at 1",
         dotOp.length > 0 && inBand && monotone && anchorsSeen > 0 && anchorOp === 1,
         { dots: dotOp.length, lo: +opLo.toFixed(3), hi: +opHi.toFixed(3), anchors: anchorsSeen, anchorOpacity: anchorOp });
+
+      /* 1c — one size, and the reader's multiplier ------------------------ */
+      const drawnRadii = function () {
+        const out = new Map();
+        view.svg.querySelectorAll(".tufte-map-dot").forEach(function (el) {
+          out.set(el.getAttribute("data-i"), +el.getAttribute("r"));
+        });
+        return out;
+      };
+      const r1 = drawnRadii();
+      const r1v = Array.from(r1.values());
+      const spread = Math.max.apply(null, r1v) / Math.min.apply(null, r1v);
+      state.plugin.settings.dotSize = 2;
+      view.refreshFromSettings("names");
+      await wait(80);
+      const r2 = drawnRadii();
+      // `r` is written to three decimals, so each side carries up to 5e-4 of
+      // rounding and the dotsDoubled one twice that.
+      let dotsDoubled = r2.size === r1.size, worstDouble = 0;
+      r1.forEach(function (r, k) {
+        const d = Math.abs(r2.get(k) - 2 * r);
+        worstDouble = Math.max(worstDouble, d);
+        if (!(d <= 1.5e-3)) dotsDoubled = false;
+      });
+      state.plugin.settings.dotSize = 1;
+      view.refreshFromSettings("names");
+      await wait(80);
+      step("dots are one size, the most important a tenth larger",
+        "over the drawn circles max r / min r <= 1.10; dot size 2 doubles every radius (to the 3-decimal rounding of r), and 1 restores it",
+        spread <= 1.10 + 1e-6 && dotsDoubled && drawnRadii().size === r1.size,
+        { spread: +spread.toFixed(4), rMin: Math.min.apply(null, r1v), rMax: Math.max.apply(null, r1v),
+          worstDoubleError: +worstDouble.toFixed(5) });
+
+      /* 1d — the importance sliders ------------------------------------- */
+      // The harness's files carry no stat, so every size is 0; give the
+      // model's notes sizes here, with one non-anchor note on Typography's
+      // hill the largest, so "length only" has a visible answer: that note
+      // becomes the summit.
+      document.getElementById("settings").click();
+      const sliderFor = function (name) {
+        const items = document.querySelectorAll("#settings-host .setting-item");
+        for (let k = 0; k < items.length; k++) {
+          const n = items[k].querySelector(".setting-item-name");
+          if (n && n.textContent === name) return items[k].querySelector("input[type=range]");
+        }
+        return null;
+      };
+      const slide = function (el, v) {
+        el.value = String(v);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+      const sliders = ["Inbound links", "Outbound links", "Note length", "Recent edits"].map(sliderFor);
+      const typo = view.model.peaks.findIndex(function (p) { return p.name === "Typography"; });
+      const tp = view.model.peaks[typo];
+      let pick = -1, pickD = Infinity;
+      view.model.nodes.forEach(function (nd, i) {
+        if (nd.region !== typo || nd.summit !== null) return;
+        const d = Math.hypot(nd.x - tp.x, nd.y - tp.y);
+        if (d < pickD) { pickD = d; pick = i; }
+      });
+      view.model.nodes.forEach(function (nd, i) { nd.size = i === pick ? 1e6 : i; });
+      const typoHub = nodeIndexByTitle("Typography");
+      const hubXY = [view.model.nodes[typoHub].x, view.model.nodes[typoHub].y];
+      const layoutBefore = view.model.layoutPositions;
+      const modelBefore = view.model;
+      if (sliders.every(Boolean)) { slide(sliders[0], 0); slide(sliders[1], 0); slide(sliders[2], 10); }
+      await wait(700);
+      const rowNames = function () {
+        // The rows the margin drew for the summits, read off the DOM.
+        return (view.summitRows || []).filter(function (r) { return view.marginEl.contains(r.el); })
+          .map(function (r) { return r.el.getAttribute("title"); });
+      };
+      const peakNames = view.model.peaks.map(function (p) { return p.name; });
+      const rowsMatch = JSON.stringify(rowNames()) === JSON.stringify(peakNames);
+      const renamed = pick >= 0 && view.model.peaks[typo].name === view.model.nodes[pick].title;
+      const unmoved = view.model === modelBefore && view.model.layoutPositions === layoutBefore &&
+        view.model.nodes[typoHub].x === hubXY[0] && view.model.nodes[typoHub].y === hubXY[1];
+      const weighted = view.model.importance && view.model.importance.length === 10;
+      const sixPeaks = view.model.peaks.length === 6;
+      if (sliders.every(Boolean)) { slide(sliders[0], 5); slide(sliders[1], 5); slide(sliders[2], 0); }
+      await wait(700);
+      view.model.nodes.forEach(function (nd) { nd.size = 0; });
+      const restored = view.model.peaks.map(function (p) { return p.name; }).sort().join(",") ===
+        ["Typography", "Cartography", "Rhetoric", "Statistics", "Color", "Notebooks"].sort().join(",");
+      document.getElementById("settings-host").textContent = "";
+      step("the importance sliders re-anchor without a relayout",
+        "inbound 0, outbound 0, length 10 through the settings tab: the same model and positions, model.importance.length 10, six peaks, the largest note on Typography's hill renames that summit, the margin rows follow; the defaults bring the six hubs back",
+        sliders.every(Boolean) && unmoved && weighted && sixPeaks && renamed && rowsMatch && restored,
+        { sliders: sliders.filter(Boolean).length, unmoved: unmoved, weighted: !!weighted, peaks: view.model.peaks.length,
+          renamedTo: pick >= 0 ? view.model.nodes[pick].title : null, rowsMatch: rowsMatch,
+          restored: view.model.peaks.map(function (p) { return p.name; }) });
 
       /* 2 — hover a hub -------------------------------------------------- */
       const hub = nodeIndexByTitle("Typography");

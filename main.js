@@ -13,7 +13,7 @@ const {
  * Tufte Map — the vault's link graph drawn as a contour sheet.
  *
  * Notes that link to one another lie close together; the land rises where
- * notes are dense; each hill is named after its most connected note.  The
+ * notes are dense; each hill is named after its most important note.  The
  * whole pipeline is a port of the Python generator that produced the
  * reference sheets, with one part rewritten rather than ported: Python used
  * umap-learn, and a plugin may not ship a library, so the layout engine here
@@ -53,10 +53,10 @@ var TUFTE_L10N = {
   "Redraw knowledge map from scratch": { "zh": "从头重绘知识地图" },
   "notes": { "zh": "篇笔记" },
   "links": { "zh": "条链接" },
-  "Notes that link to one another lie close together, and the land rises where notes crowd; a dot's area is its number of links.":
-    { "zh": "互相链接的笔记彼此靠近，笔记密集处地势隆起；点的面积即它的链接数量。" },
-  "The red dot on each summit is that region's most connected note — hover a dot to see its links, click to open it, {mod}-hover for a preview.":
-    { "zh": "每座山峰上的红点是该区域链接最多的笔记——悬停可看它的链接，点击可打开，{mod}+悬停可预览。" },
+  "Notes that link to one another lie close together, and the land rises where notes crowd; a dot's colour deepens from warm grey to red with the note's importance.":
+    { "zh": "互相链接的笔记彼此靠近，笔记密集处地势隆起；点的颜色随笔记的重要性由暖灰渐深至红。" },
+  "The red dot on each summit is that region's most important note — hover a dot to see its links, click to open it, {mod}-hover for a preview.":
+    { "zh": "每座山峰上的红点是该区域最重要的笔记——悬停可看它的链接，点击可打开，{mod}+悬停可预览。" },
   "Find a note": { "zh": "查找笔记" },
   "search titles": { "zh": "搜索标题" },
   "Summits": { "zh": "山峰" },
@@ -88,8 +88,8 @@ var TUFTE_L10N = {
   "Tab": { "zh": "标签页" },
   "Sidebar": { "zh": "侧边栏" },
   "Notes to name": { "zh": "标注的笔记数量" },
-  "How many of the most connected notes the map tries to name. Summits are always named, and zooming in names more.":
-    { "zh": "地图尝试为多少篇链接最多的笔记加标注。山峰始终有名字，放大后会标注更多。" },
+  "How many of the most important notes the map tries to name. Summits are always named, and zooming in names more.":
+    { "zh": "地图尝试标名的最重要笔记的数量。山峰总会标名，放大后标名更多。" },
   "Show all links": { "zh": "显示全部链接" },
   "Show links between summits": { "zh": "显示山峰之间的链接" },
   "Draw the links that run from one summit's region to another as faint hairlines, so the mountains read as connected. On by default.":
@@ -104,7 +104,23 @@ var TUFTE_L10N = {
   "hover a dot for its links, click to open": { "zh": "悬停圆点可看链接，点击可打开" },
   "Text fade threshold": { "zh": "文字淡入阈值" },
   "Labels appear sooner or later as you zoom, like the graph view's setting.":
-    { "zh": "标签随缩放提前或延后显现，与关系图视图的同名设置一致。" }
+    { "zh": "标签随缩放提前或延后显现，与关系图视图的同名设置一致。" },
+  "Dot size": { "zh": "点的大小" },
+  "The size of every dot. Importance is shown by colour: the most important dot is only a tenth larger than the least.":
+    { "zh": "所有点的大小。重要性由颜色表示：最重要的点只比最不重要的大十分之一。" },
+  "Importance": { "zh": "重要性" },
+  "What makes a note important. Importance decides a dot's colour, which note anchors each summit, and which notes are named. Links are counted with the two link weights and the notes ranked by the total; length and recency are ranked on their own and join by their weights.":
+    { "zh": "决定笔记重要性的因素。重要性决定点的颜色、每座山峰以哪篇笔记为顶，以及哪些笔记会被标名。链接按两项链接权重计数后排名；长度与最近修改各自排名，再按权重合并。" },
+  "Inbound links": { "zh": "入链" },
+  "How much each link into the note counts.": { "zh": "每条指向本笔记的链接所占的比重。" },
+  "Outbound links": { "zh": "出链" },
+  "How much each link out of the note counts.": { "zh": "每条由本笔记发出的链接所占的比重。" },
+  "Note length": { "zh": "笔记长度" },
+  "How much the note's length counts, by its size on disk — a stand-in for word count. Off by default.":
+    { "zh": "笔记长度（按文件大小，近似字数）所占的比重。默认关闭。" },
+  "Recent edits": { "zh": "最近修改" },
+  "How much a recent edit counts: the most recently changed notes rank highest. Off by default.":
+    { "zh": "最近修改所占的比重：改动越近的笔记排名越高。默认关闭。" }
 };
 // TUFTE-L10N:END map
 
@@ -221,10 +237,11 @@ const TIER_FADE_SPAN = 0.15;
 const TIER_FADE_MIN = 0.06;
 // Flannery (1956) fixed a MINIMUM symbol size for the smallest value in every
 // proportional-symbol map, because a disc below it is a speck rather than a
-// datum; the practice also caps the largest disc against the sheet.  The area
-// law still holds strictly BETWEEN the floor and the ceiling — the ceiling is
-// reached by shrinking every disc by one factor, which is a change of scale,
-// not of law, and the floor touches only the smallest.
+// datum; the practice also caps the largest disc against the sheet.  The dots
+// here are no longer proportional symbols — every one is drawn within a tenth
+// of the same radius — but the same two limits still apply: the ceiling is
+// reached by shrinking every disc by one factor, which keeps the flat ladder
+// flat, and the floor touches a disc only when the whole sheet is small.
 const DOT_MIN_RADIUS_PX = 1.1;
 // 1 pt = 1.3333 CSS px; PT_PER_CSS_PX itself is declared with the type sizes
 // below, and a const may not be read before it is declared.
@@ -248,8 +265,8 @@ const COMPACT_MAX_WIDTH_PX = 600;
 const HAIRLINE_SCALE_MIN = 0.75;
 
 /** The one scale, from the UNZOOMED sheet width.  Zoom magnifies the map,
- *  not the marks: a dot that grew while zooming would break the dot-area
- *  law the legend states. */
+ *  not the marks: a dot that grew while zooming would stop being one size
+ *  across the sheet, and the reader would read size as meaning. */
 function designScale(sheetWidthPt) {
   const w = sheetWidthPt > 0 ? sheetWidthPt : DESIGN_SHEET_PT;
   if (w >= SCALE_KNEE_PT) return Math.min(w / DESIGN_SHEET_PT, SCALE_MAX);
@@ -348,25 +365,26 @@ function reduceContours(contours, levels) {
   return out;
 }
 
-/** The dot ladder for one sheet: one multiplier that keeps the largest disc
- *  inside its ceiling (a change of scale, so the area law survives it), and
- *  the floor the smallest disc is never drawn below. */
-function dotSizing(model, scale, sheetWidthPt, compact) {
-  let maxDeg = 0;
+/** The dot ladder for one sheet: the reader's dot-size multiplier, shrunk
+ *  further when needed so the largest disc stays inside its ceiling (one
+ *  factor for every disc, so the tenth between least and most important
+ *  survives it), and the floor the smallest disc is never drawn below.
+ *  `dotSize` is the setting, clamped to [0.5, 2]; anything that is not a
+ *  number is read as 1, so an old caller that passes nothing draws as before. */
+function dotSizing(model, scale, sheetWidthPt, compact, dotSize) {
+  let k = Number.isFinite(dotSize) ? clamp(dotSize, 0.5, 2) : 1;
   const nodes = (model && model.nodes) || [];
-  for (let i = 0; i < nodes.length; i++) if (nodes[i].deg > maxDeg) maxDeg = nodes[i].deg;
-  let k = 1;
-  if (compact && maxDeg > 0 && sheetWidthPt > 0) {
+  if (compact && nodes.length > 0 && sheetWidthPt > 0) {
     const ceilingR = COMPACT_DOT_CAP_FRAC * sheetWidthPt / 2;   // the CAP is a diameter
-    const rmax = scale * markerRadiusPt(maxDeg);
-    if (rmax > ceilingR) k = ceilingR / rmax;
+    const rmax = scale * k * markerRadiusPt(1);
+    if (rmax > ceilingR) k *= ceilingR / rmax;
   }
   return { k: k, floorPt: DOT_MIN_RADIUS_PT, capPt: COMPACT_DOT_CAP_FRAC * sheetWidthPt / 2 };
 }
 
-function dotRadiusPt(deg, scale, sizing) {
+function dotRadiusPt(importance, scale, sizing) {
   const s = sizing || { k: 1, floorPt: 0 };
-  return Math.max(s.floorPt || 0, (s.k || 1) * scale * markerRadiusPt(deg));
+  return Math.max(s.floorPt || 0, (s.k || 1) * scale * markerRadiusPt(importance));
 }
 
 /* -- orientation ---------------------------------------------------------
@@ -515,13 +533,23 @@ const PACK_STAY_GAP_MAX = COMPONENT_RETRY_MAX;
 const PACK_LOCAL_REACH = 2;
 
 /* -- dots --------------------------------------------------------------- */
-// Marker AREA is strictly proportional to the number of links — the legend
-// says so, so there is no ceiling.  The floor is the one degree the law would
-// otherwise draw too faint to see.
-const DEGREE_AREA_PT2 = 1.95;
-const DEGREE_AREA_FLOOR = 3.45;
+// Size no longer encodes links; colour does.  A dot's importance (see
+// noteImportance) moves it along the warm-grey -> red ramp, and moves its
+// radius by at most a tenth: small enough that the eye reads one size across
+// the sheet, large enough that the summit dot is not the smallest thing on
+// its hill.  Proportional area made the hubs into blots that hid the contours
+// under them, and asked the reader to compare areas, which the eye does badly.
+const DOT_RADIUS_PT = 1.5;         // the least important note's radius at scale 1
+const DOT_SPREAD = 0.10;           // the most important note is this much larger — in radius
 const DOT_RING_PT = 0.2;           // half the paper ring every dot is stroked with
-const DEGREE_RAMP_GAMMA = 2.2;     // rank^gamma along the muted -> ink ramp
+// importance^gamma along the grey -> red ramp.  A gamma keeps the ground
+// grey — the median note is about a fifth of the way to red, the top
+// quarter about half — so the red still reads as figure and not as a second
+// ground.  Importance is a percentile, so the SHARE of red dots is the same
+// in every vault, whatever its link counts: at 1.8 a third of the dots were
+// more than half red and the sheet read as confetti; 2.2 leaves that to the
+// top quarter.
+const IMPORTANCE_RAMP_GAMMA = 2.2;
 
 /* -- type --------------------------------------------------------------- */
 const SUMMIT_PT = 12.0;
@@ -657,14 +685,17 @@ function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
 function roman(i) { return i < ROMAN.length ? ROMAN[i] : String(i + 1); }
 
-/** Marker area in pt^2 for a note of this degree — the dot-area law. */
-function degreeArea(deg) {
-  return Math.max(DEGREE_AREA_PT2 * deg, DEGREE_AREA_FLOOR);
+/** The radius, in pt at scale 1, of a note of this importance (0..1): the
+ *  flat ladder, a tenth from bottom to top. */
+function markerRadiusPt(importance) {
+  const imp = Number.isFinite(importance) ? clamp(importance, 0, 1) : 0;
+  return DOT_RADIUS_PT * (1 + DOT_SPREAD * imp);
 }
 
-/** ...and the radius the reader actually sees, in pt. */
-function markerRadiusPt(deg) {
-  return Math.sqrt(degreeArea(deg)) / 2.0;
+/** ...and its ink, in pt^2 — what the label placer weighs a dot by. */
+function markerAreaPt2(importance) {
+  const r = markerRadiusPt(importance);
+  return Math.PI * r * r;
 }
 
 /** No-op hooks, so the core never has to test for their presence. */
@@ -1971,8 +2002,9 @@ function findPeaks(grid, coords, frameW, minNotes) {
  * Give every peak an anchor note and name it after that note.
  *
  * A density maximum is a place on a grid, not a thing in the vault.  The
- * summit is therefore IDENTIFIED WITH a note — the best-connected one on its
- * own hill — and takes that note's title, so the biggest dot on each hill is
+ * summit is therefore IDENTIFIED WITH a note — the most important one on its
+ * own hill (noteImportance; links in and out by default, degree breaking a
+ * tie) — and takes that note's title, so the reddest dot on each hill is
  * never left unlabelled.  Two peaks cannot share an anchor: the lower one
  * takes its next-best note.
  */
@@ -1990,7 +2022,8 @@ function anchorPeaks(peaks, coords, nodes) {
     }
     const pool = hill.length ? hill : (nearest >= 0 ? [nearest] : []);
     pool.sort(function (a, b) {
-      return nodes[b].deg - nodes[a].deg ||
+      return (nodes[b].importance || 0) - (nodes[a].importance || 0) ||
+        nodes[b].deg - nodes[a].deg ||
         (nodes[a].path < nodes[b].path ? -1 : nodes[a].path > nodes[b].path ? 1 : 0);
     });
     let anchor = null;
@@ -2250,11 +2283,19 @@ async function computeMap(input, options, measurer, prev, hooks) {
       degIn: g.degIn[placedIdx[i]],
       degOut: g.degOut[placedIdx[i]],
       deg: g.degIn[placedIdx[i]] + g.degOut[placedIdx[i]],
+      // The two file stats importance may weigh.  They ride on the node, not
+      // in hashGraph, so an edit that only changes them never costs a relayout.
+      size: Number.isFinite(f.size) && f.size >= 0 ? f.size : 0,
+      mtime: Number.isFinite(f.mtime) && f.mtime >= 0 ? f.mtime : 0,
+      importance: 0,
       component: 0,
       summit: null,
       region: null
     };
   }
+  const importanceWeights = sanitiseImportance(opt.importance);
+  const imp = noteImportance(nodes, importanceWeights);
+  for (let i = 0; i < n; i++) nodes[i].importance = imp[i];
   const adj = new Array(n);
   for (let i = 0; i < n; i++) {
     adj[i] = adjAll[placedIdx[i]].map(function (j) { return local.get(j); })
@@ -2539,6 +2580,7 @@ async function computeMap(input, options, measurer, prev, hooks) {
     folders: folders,
     layoutPositions: layoutPositions,
     hash: hash,
+    importance: importanceWeights,
     params: {
       seed: seed,
       bandwidth: bandwidth,
@@ -2785,12 +2827,13 @@ function placeLabels(model, measurer, opts) {
   let maxRadRing = 0;
   for (let i = 0; i < n; i++) {
     xs[i] = nodes[i].x; ys[i] = nodes[i].y; deg[i] = nodes[i].deg;
-    // Area is proportional to the degree and to s^2 together, which is the
-    // same statement as "the radius is scaled": the dot-area law survives.
-    areas[i] = degreeArea(deg[i]) * s * s;
-    // Flannery's floor and ceiling: the drawn radius, not the law's radius.
-    // The placer has to keep clear of the disc the reader sees.
-    rad[i] = P(dotRadiusPt(deg[i], s, dots));
+    const imp = nodes[i].importance || 0;
+    // The dot's ink at this scale: its area at scale 1 times s^2, which is
+    // the same statement as "the radius is scaled".
+    areas[i] = markerAreaPt2(imp) * s * s;
+    // Flannery's floor and ceiling, and the reader's dot size: the drawn
+    // radius, which is the disc the placer has to keep clear of.
+    rad[i] = P(dotRadiusPt(imp, s, dots));
     radRing[i] = rad[i] + D(DOT_RING_PT);
     if (radRing[i] > maxRadRing) maxRadRing = radRing[i];
   }
@@ -3204,7 +3247,7 @@ function placeLabels(model, measurer, opts) {
     occupied.push(put.box);
   }
 
-  /* -- tier two: islets, then the most connected notes -------------------- */
+  /* -- tier two: islets, then the most important notes -------------------- */
   const anchorNotes = new Set();
   for (let p = 0; p < model.peaks.length; p++) {
     if (model.peaks[p].anchor !== null) anchorNotes.add(model.peaks[p].anchor);
@@ -3216,9 +3259,7 @@ function placeLabels(model, measurer, opts) {
   };
   const ranked = [];
   for (let i = 0; i < n; i++) ranked.push(i);
-  ranked.sort(function (a, b) {
-    return deg[b] - deg[a] || (nodes[a].path < nodes[b].path ? -1 : nodes[a].path > nodes[b].path ? 1 : 0);
-  });
+  ranked.sort(function (a, b) { return byImportance(nodes, a, b); });
   const tail = ranked.filter(function (i) {
     return !anchorNotes.has(i) && !summitTitles.has(nodes[i].title.trim().toLowerCase()) && visible(i);
   });
@@ -3237,9 +3278,7 @@ function placeLabels(model, measurer, opts) {
     .sort(function (a, b) { return b[1].length - a[1].length || a[0] - b[0]; })
     .slice(0, ISLET_MAX_NAMED)
     .map(function (kv) {
-      const g = kv[1].slice().sort(function (a, b) {
-        return deg[b] - deg[a] || (nodes[a].path < nodes[b].path ? -1 : 1);
-      });
+      const g = kv[1].slice().sort(function (a, b) { return byImportance(nodes, a, b); });
       return g[0];
     })
     .filter(function (i) { return !anchorNotes.has(i) && visible(i); });
@@ -3656,37 +3695,151 @@ function folderRows(folders, opts) {
   return { depth: depth, rows: rows, groups: all.length };
 }
 
+/* -- importance --------------------------------------------------------- */
+// What "important" means by default: links, in and out, counted alike — so
+// the defaults rank notes exactly as degree did before the weights existed.
+// Length and recency are off until the reader asks for them.
+const DEFAULT_IMPORTANCE = { inbound: 5, outbound: 5, length: 0, recency: 0 };
+
+/** The four weights, each a finite number >= 0 or else 0; no object at all
+ *  means the defaults.  A fresh object every time, so a caller may keep it. */
+function sanitiseImportance(weights) {
+  const w = weights && typeof weights === "object" ? weights : DEFAULT_IMPORTANCE;
+  const one = function (v) { return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0; };
+  return { inbound: one(w.inbound), outbound: one(w.outbound), length: one(w.length), recency: one(w.recency) };
+}
+
+/**
+ * Each value's TIE-AWARE percentile among all of them, in [0, 1]:
+ * p = (#{v < x} + (#{v == x} - 1) / 2) / (N - 1).  A percentile rather than a
+ * value over the maximum, because a vault's link counts, sizes and edit
+ * times are all heavily skewed — one hub at a hundred links would leave every
+ * other note pinned at the faint end — and tie-aware so that two notes with
+ * the same value are never drawn differently; order in the file is not a
+ * fact about the notes.  One value, or none, is simply at the top.
+ */
+function tiePercentile(values) {
+  const N = values.length;
+  const out = new Float64Array(N);
+  if (N <= 1) { out.fill(1); return out; }
+  const sorted = Array.from(values).sort(function (a, b) { return a - b; });
+  // below[v] and equal[v] from one pass over the sorted values.
+  const below = new Map(), equal = new Map();
+  for (let k = 0; k < N; k++) {
+    if (!below.has(sorted[k])) below.set(sorted[k], k);
+    equal.set(sorted[k], (equal.get(sorted[k]) || 0) + 1);
+  }
+  for (let i = 0; i < N; i++) {
+    const v = values[i];
+    out[i] = (below.get(v) + (equal.get(v) - 1) / 2) / (N - 1);
+  }
+  return out;
+}
+
+/**
+ * How important each note is, as a number in [0, 1]: what colours its dot,
+ * which note anchors each summit, which notes are named first, and which
+ * match Enter jumps to.
+ *
+ * Links are COUNTED with their weights and the totals ranked once, so the
+ * defaults reproduce the order by degree exactly, ties included, and
+ * "inbound 10, outbound 5" means what it says: a backlink counts twice an
+ * outgoing link.  Length (size on disk) and recency (mtime) share no unit
+ * with a link count, so they join by RANK: each is a percentile, and the
+ * parts are averaged with their weights.  The average is ranked once more,
+ * so the colour ramp always spans its whole range whatever the weights; with
+ * one part that last ranking changes nothing.  Every weight zero means every
+ * note is equal, at the middle.
+ */
+function noteImportance(nodes, weights) {
+  const w = sanitiseImportance(weights);
+  const n = nodes.length;
+  const parts = [];
+  const field = function (f) {
+    const v = new Float64Array(n);
+    for (let i = 0; i < n; i++) v[i] = f(nodes[i]);
+    return v;
+  };
+  const wl = w.inbound + w.outbound;
+  if (wl > 0) {
+    parts.push([wl, tiePercentile(field(function (nd) {
+      return w.inbound * (nd.degIn || 0) + w.outbound * (nd.degOut || 0);
+    }))]);
+  }
+  if (w.length > 0) parts.push([w.length, tiePercentile(field(function (nd) { return nd.size || 0; }))]);
+  if (w.recency > 0) parts.push([w.recency, tiePercentile(field(function (nd) { return nd.mtime || 0; }))]);
+  let W = 0;
+  for (let p = 0; p < parts.length; p++) W += parts[p][0];
+  const score = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    if (W <= 0) { score[i] = 0.5; continue; }
+    let s = 0;
+    for (let p = 0; p < parts.length; p++) s += parts[p][0] * parts[p][1][i];
+    score[i] = s / W;
+  }
+  // All equal: every note sits at the middle, not at the top a one-value
+  // percentile would give it.
+  return W > 0 ? tiePercentile(score) : score;
+}
+
+/** Order two node indices by importance (missing reads as 0), then degree,
+ *  then path — negative when `a` comes first.  The one ordering every "most
+ *  important note" choice in the core shares. */
+function byImportance(nodes, a, b) {
+  const na = nodes[a], nb = nodes[b];
+  return (nb.importance || 0) - (na.importance || 0) ||
+    (nb.deg || 0) - (na.deg || 0) ||
+    (na.path < nb.path ? -1 : na.path > nb.path ? 1 : 0);
+}
+
+/**
+ * Re-weigh importance on a finished map without laying it out again: the
+ * view calls this when an importance slider moves.  The positions, terrain
+ * and peaks' places stay; what changes is each note's importance, and so
+ * which note anchors each summit, the summit's name, the region partition
+ * and each region's count.  `model` is the UPRIGHT model (the rotated copies
+ * are derived from it and rebuilt by the caller).
+ */
+function rescoreModel(model, weights) {
+  if (!model || !model.nodes) return model;
+  const nodes = model.nodes;
+  const w = sanitiseImportance(weights);
+  const imp = noteImportance(nodes, w);
+  const coords = new Float64Array(nodes.length * 2);
+  for (let i = 0; i < nodes.length; i++) {
+    nodes[i].importance = imp[i];
+    nodes[i].summit = null;
+    coords[i * 2] = nodes[i].x;
+    coords[i * 2 + 1] = nodes[i].y;
+  }
+  const peaks = model.peaks || [];
+  anchorPeaks(peaks, coords, nodes);
+  for (let p = 0; p < peaks.length; p++) {
+    if (peaks[p].anchor !== null) nodes[peaks[p].anchor].summit = p;
+  }
+  model.importance = w;
+  return model;
+}
+
 /**
  * How central each non-summit note is, as a number in [0, 1] — what the
  * stylesheet turns into the dot's opacity.
  *
- * Centrality is degree, ranked as a TIE-AWARE percentile among the non-anchor
- * notes: c = (#{deg < d} + (#{deg == d} - 1) / 2) / (N - 1).  A percentile
- * rather than degree over the maximum, because a vault's degrees are heavily
- * skewed — one hub at a hundred links would leave every other note pinned at
- * the faint end — and tie-aware so that two notes with the same number of
- * links are never drawn at different strengths; order in the file is not a
- * fact about the notes.  The summit anchors are left out of the ranking (and
- * out of the result) because they are drawn at full strength regardless, and
- * letting the six largest hubs occupy the top of the scale would only
- * compress everyone else.  One non-anchor note, or none, is simply central.
+ * Centrality is simply the note's importance (noteImportance), so one number
+ * drives both the dot's colour and its strength.  The summit anchors are left
+ * out of the result because they are drawn at full strength regardless.  A
+ * node without an `importance` field (a hand-built model, an old test) is
+ * scored with the default weights, ranked among ALL the nodes, anchors
+ * included, so the number means the same thing either way.
  */
 function dotCentrality(nodes) {
   const out = new Array(nodes.length);
-  const degs = [];
-  for (let i = 0; i < nodes.length; i++) if (nodes[i].summit === null) degs.push(nodes[i].deg);
-  const N = degs.length;
-  degs.sort(function (a, b) { return a - b; });
-  // below[d] and equal[d] from one pass over the sorted degrees.
-  const below = new Map(), equal = new Map();
-  for (let k = 0; k < N; k++) {
-    if (!below.has(degs[k])) below.set(degs[k], k);
-    equal.set(degs[k], (equal.get(degs[k]) || 0) + 1);
-  }
+  let missing = false;
+  for (let i = 0; i < nodes.length; i++) if (typeof nodes[i].importance !== "number") missing = true;
+  const imp = missing ? noteImportance(nodes, DEFAULT_IMPORTANCE) : null;
   for (let i = 0; i < nodes.length; i++) {
     if (nodes[i].summit !== null) continue;
-    const d = nodes[i].deg;
-    out[i] = N <= 1 ? 1 : (below.get(d) + (equal.get(d) - 1) / 2) / (N - 1);
+    out[i] = imp ? imp[i] : nodes[i].importance;
   }
   return out;
 }
@@ -3738,7 +3891,8 @@ function bridgeEdges(model) {
  * and each is inactive when it is empty, so the default — nothing typed,
  * nothing pinned — lights every note without a special case.
  *
- * `best` is the highest-degree note matching the SEARCH, whatever the pins say
+ * `best` is the most important note matching the SEARCH (degree, then path,
+ * breaking a tie), whatever the pins say
  * about it: Enter in the search box means "the note I am typing", and a pinned
  * folder the reader forgot about must not send them somewhere else.
  */
@@ -3750,15 +3904,12 @@ function filterNotes(nodes, opts) {
   const keys = opts.folderKeys || null;
   const n = nodes.length;
   const visible = new Uint8Array(n);
-  let count = 0, matches = 0, best = -1, bestDeg = -1;
+  let count = 0, matches = 0, best = -1;
   for (let i = 0; i < n; i++) {
     const hit = !q || String(nodes[i].title || "").toLowerCase().indexOf(q) !== -1;
     if (hit) {
       matches++;
-      if (nodes[i].deg > bestDeg ||
-        (nodes[i].deg === bestDeg && best >= 0 && nodes[i].path < nodes[best].path)) {
-        bestDeg = nodes[i].deg; best = i;
-      }
+      if (best < 0 || byImportance(nodes, i, best) < 0) best = i;
     }
     let ok = hit;
     if (ok && summits) ok = summits.has(nodes[i].region);
@@ -3813,11 +3964,15 @@ const TufteMapCore = {
   folderRows: folderRows,
   filterNotes: filterNotes,
   dotCentrality: dotCentrality,
+  noteImportance: noteImportance,
+  rescoreModel: rescoreModel,
+  tiePercentile: tiePercentile,
+  DEFAULT_IMPORTANCE: DEFAULT_IMPORTANCE,
   bridgeEdges: bridgeEdges,
   chooseCompanionLeaf: chooseCompanionLeaf,
   savedPosition: savedPosition,
   modLabel: modLabel,
-  degreeArea: degreeArea,
+  markerAreaPt2: markerAreaPt2,
   markerRadiusPt: markerRadiusPt,
   designScale: designScale,
   presentationMode: presentationMode,
@@ -3854,7 +4009,9 @@ const TufteMapCore = {
     LEADER_LW_PT: 0.35,
     HALO_LW_PT: HALO_LW_PT,
     DOT_RING_LW_PT: 0.4,
-    DEGREE_RAMP_GAMMA: DEGREE_RAMP_GAMMA,
+    IMPORTANCE_RAMP_GAMMA: IMPORTANCE_RAMP_GAMMA,
+    DOT_RADIUS_PT: DOT_RADIUS_PT,
+    DOT_SPREAD: DOT_SPREAD,
     PT_PER_CSS_PX: PT_PER_CSS_PX,
     REFERENCE_SHEET_PT: REFERENCE_SHEET_PT,
     DESIGN_SHEET_PT: DESIGN_SHEET_PT,
@@ -3904,7 +4061,7 @@ const TufteMapCore = {
  *   contours       three weights, cut away under every label by an SVG mask
  *   leaders        above the tint so they are not lost in a contour, below
  *                  the dots and the type so they can never touch a letter
- *   dots           area proportional to links, degree ramp, paper ring
+ *   dots           one size (a tenth apart), grey -> red by importance, paper ring
  *   labels         summit (red numeral + tracked capitals) and minor (italic)
  *
  * The viewBox is in POINTS, so every size in the model — line weights, type
@@ -4091,10 +4248,11 @@ function terrainRaster(doc, model, theme, opts) {
 /* -- where the sheet's own rules live -----------------------------------
  * They used to travel with the sheet, in an <style> element inside the
  * <svg>.  Every one of them is static — a dot's fill is a MIX of two theme
- * colours chosen by its rank on the degree ramp, and the mix has to happen
- * in CSS because an SVG `fill` attribute containing var() is ignored
- * outright, but the RULE is the same for every sheet; only the rank (the
- * custom property --k on each circle) and the six colour tokens (set on the
+ * colours chosen by its importance on the grey -> red ramp, and the mix has
+ * to happen in CSS because an SVG `fill` attribute containing var() is
+ * ignored outright, but the RULE is the same for every sheet; only the
+ * ramp position (the custom property --k on each circle) and the six
+ * colour tokens (set on the
  * <svg> element itself) vary.  So the rules now live in styles.css with the
  * rest of the view's, which is one stylesheet for the reader to override
  * instead of two, and one of them unreachable inside a shadowless SVG.
@@ -4253,15 +4411,19 @@ function draw(container, model, labelLayout, theme, opts) {
   }
 
   /* -- dots ------------------------------------------------------------- */
-  // Small dots first, hubs last, so a hub's paper ring separates it from the
-  // specks crowding it rather than the other way round.
+  // Every dot is drawn at nearly one size; importance is carried by colour,
+  // from the warm-grey ground to the accent red.  The least important dots
+  // are drawn first and the most important last, so a red dot's paper ring
+  // separates it from the grey ones crowding it rather than the other way
+  // round.  A hand-built model without `importance` is scored with the
+  // default weights, so the renderer never has to guess.
   const nodes = model.nodes;
+  let unscored = false;
+  for (let i = 0; i < nodes.length; i++) if (typeof nodes[i].importance !== "number") unscored = true;
+  const importance = unscored ? noteImportance(nodes, DEFAULT_IMPORTANCE)
+    : nodes.map(function (nd) { return nd.importance; });
   const order = nodes.map(function (_, i) { return i; })
-    .sort(function (a, b) { return nodes[a].deg - nodes[b].deg || a - b; });
-  const ranks = new Float64Array(nodes.length);
-  for (let k = 0; k < order.length; k++) {
-    ranks[order[k]] = order.length > 1 ? k / (order.length - 1) : 0;
-  }
+    .sort(function (a, b) { return importance[a] - importance[b] || a - b; });
   const centrality = dotCentrality(nodes);
   const dotGroup = svgEl(doc, "g", {
     "class": "tufte-map-dots", "stroke-width": px(C.DOT_RING_LW_PT * hair).toFixed(3)
@@ -4280,11 +4442,13 @@ function draw(container, model, labelLayout, theme, opts) {
       "class": "tufte-map-dot" + (isAnchor ? " tufte-map-dot-anchor" : ""),
       "data-i": i,
       cx: X(nodes[i].x).toFixed(2), cy: Y(nodes[i].y).toFixed(2),
-      r: dotRadiusPt(nodes[i].deg, scale, sizing).toFixed(3)
+      r: dotRadiusPt(importance[i], scale, sizing).toFixed(3)
     });
-    circle.style.setProperty("--k", Math.pow(ranks[i], C.DEGREE_RAMP_GAMMA).toFixed(4));
-    // ...and --c, the note's centrality among the non-summit notes, which the
-    // stylesheet maps onto the dot's opacity.  Set as a custom property for
+    // --k is the dot's place on the grey -> red ramp: importance, bent by the
+    // gamma that keeps the ground grey.
+    circle.style.setProperty("--k", Math.pow(importance[i], C.IMPORTANCE_RAMP_GAMMA).toFixed(4));
+    // ...and --c, the same importance, which the stylesheet maps onto the
+    // dot's opacity: one number drives both.  Set as a custom property for
     // the same reason as --k: the numbers live in the stylesheet's tokens,
     // and var() is not allowed in a presentation attribute.  Anchors get none
     // — they are drawn at full strength.
@@ -4490,6 +4654,16 @@ const DEFAULT_SETTINGS = {
   // slider from -3 to 3; so do we, and it means the same thing: labels come in
   // sooner or later as the sheet's effective width grows.
   textFadeThreshold: 0,
+  // A multiplier on every dot's radius.  Size carries no meaning any more —
+  // importance is colour — so the reader may choose it for their eyes.
+  dotSize: 1,
+  // What "important" means, as four weights from 0 to 10 (noteImportance).
+  // Links in and out, counted alike, reproduce the degree ranking the map
+  // used before the weights existed; length and recency are off by default.
+  importanceInbound: 5,
+  importanceOutbound: 5,
+  importanceLength: 0,
+  importanceRecency: 0,
   // The details band / margin column, remembered per presentation: a sidebar
   // opens as a map and a wide tab opens as a handout.
   detailsCompact: false,
@@ -4614,7 +4788,8 @@ class TufteMapView extends ItemView {
 
     this.computeToken = 0;
     this.closed = false;
-    this.dirty = false;
+    this.dirty = false;           // links changed while hidden: relayout when shown
+    this.statsDirty = false;      // only sizes and dates did: re-weigh when shown
     this.graphHash = null;
     this.busy = false;
 
@@ -4777,9 +4952,9 @@ class TufteMapView extends ItemView {
     this.hintEl.textContent = tt("hover a dot for its links, click to open");
     const guide = el("p", "tufte-map-guide", m);
     guide.textContent =
-      tt("Notes that link to one another lie close together, and the land rises where notes crowd; a dot's area is its number of links.") +
+      tt("Notes that link to one another lie close together, and the land rises where notes crowd; a dot's colour deepens from warm grey to red with the note's importance.") +
       " " +
-      fmt(tt("The red dot on each summit is that region's most connected note — hover a dot to see its links, click to open it, {mod}-hover for a preview."), { mod: mod });
+      fmt(tt("The red dot on each summit is that region's most important note — hover a dot to see its links, click to open it, {mod}-hover for a preview."), { mod: mod });
 
     /* Find is no longer here: it moved to the strip above the sheet, where the
        toggle is, so the two controls are one arrangement in both
@@ -4908,9 +5083,18 @@ class TufteMapView extends ItemView {
   }
 
   onMaybeShown() {
-    if (this.dirty && this.isVisible() && !this.busy) {
+    if (!this.isVisible() || this.busy) return;
+    if (this.dirty) {
       this.dirty = false;
+      this.statsDirty = false;
       this.recompute({ reason: "shown" }).catch((e) => console.error("tufte-map:", e));
+      return;
+    }
+    // Only sizes and dates changed while the pane was hidden: re-weigh the
+    // map that is there rather than laying it out again.
+    if (this.statsDirty) {
+      this.statsDirty = false;
+      this.refreshStats();
     }
   }
 
@@ -4924,7 +5108,16 @@ class TufteMapView extends ItemView {
         h = TufteMapCore.graphHash(this.collectInput(),
           { exclude: parseExcludes(this.plugin.settings.excludeFolders) });
       } catch (e) { console.error("tufte-map: could not fingerprint the graph", e); return; }
-      if (h === this.graphHash) return;
+      if (h === this.graphHash) {
+        // The links are as they were, but a note that was only edited has a
+        // new size and a new mtime, which the importance may weigh.  Those
+        // need no relayout: refresh the two stats and re-anchor.
+        const st = this.plugin.settings;
+        if (!this.model || !(st.importanceLength > 0 || st.importanceRecency > 0)) return;
+        if (!this.isVisible()) { this.statsDirty = true; return; }
+        this.refreshStats();
+        return;
+      }
       if (!this.isVisible()) { this.dirty = true; return; }
       this.recompute({ reason: "resolved" }).catch((e) => console.error("tufte-map:", e));
     }, RESOLVED_DEBOUNCE_MS);
@@ -4946,9 +5139,38 @@ class TufteMapView extends ItemView {
       const f = list[i];
       const parent = f.parent;
       const dir = parent && parent.path && parent.path !== "/" ? parent.path : "";
-      files.push({ path: f.path, basename: f.basename, folder: dir });
+      files.push({ path: f.path, basename: f.basename, folder: dir,
+        size: f.stat && Number.isFinite(f.stat.size) ? f.stat.size : 0,
+        mtime: f.stat && Number.isFinite(f.stat.mtime) ? f.stat.mtime : 0 });
     }
     return { files: files, resolvedLinks: this.app.metadataCache.resolvedLinks || {} };
+  }
+
+  /** Copy each note's current size and mtime onto the model, then rescore
+   *  and redraw — the cheap path for an edit that moved no link. */
+  refreshStats() {
+    if (!this.model) return;
+    const byPath = new Map();
+    const list = this.app.vault.getMarkdownFiles() || [];
+    for (let i = 0; i < list.length; i++) byPath.set(list[i].path, list[i]);
+    const nodes = this.model.nodes;
+    for (let i = 0; i < nodes.length; i++) {
+      const f = byPath.get(nodes[i].path);
+      const st = f && f.stat;
+      nodes[i].size = st && Number.isFinite(st.size) && st.size >= 0 ? st.size : 0;
+      nodes[i].mtime = st && Number.isFinite(st.mtime) && st.mtime >= 0 ? st.mtime : 0;
+    }
+    this.rescore();
+  }
+
+  /** Re-weigh importance on the map already drawn: new anchors, new summit
+   *  names and regions, new colours — the same positions. */
+  rescore() {
+    if (!this.model) return;
+    TufteMapCore.rescoreModel(this.model, this.plugin.importanceWeights());
+    this.rotModel = null;
+    this.drawModel = null;
+    this.renderAll();
   }
 
   async recompute(opts) {
@@ -4997,7 +5219,8 @@ class TufteMapView extends ItemView {
     try {
       model = await TufteMapCore.computeMap(input, {
         exclude: exclude,
-        prevFrameW: warm ? (cache.frameW || 0) : 0
+        prevFrameW: warm ? (cache.frameW || 0) : 0,
+        importance: this.plugin.importanceWeights()
       }, this.measure || TufteMapCore.approximateMeasurer,
         warm ? cache.positions : null, hooks);
     } catch (e) {
@@ -5009,6 +5232,16 @@ class TufteMapView extends ItemView {
     }
     this.busy = false;
     if (cancelled()) return;
+
+    // The weights were read when this run began.  A slider moved while the
+    // layout was computing re-scored the OLD model, and the new one would
+    // arrive carrying the weights it started with; re-weigh it before it is
+    // shown, so the map on the sheet is always the map the settings say.
+    const wanted = this.plugin.importanceWeights();
+    const used = model.importance || {};
+    if (["inbound", "outbound", "length", "recency"].some((k) => +used[k] !== +wanted[k])) {
+      TufteMapCore.rescoreModel(model, wanted);
+    }
 
     this.model = model;
     this.graphHash = model.hash;
@@ -5197,7 +5430,7 @@ class TufteMapView extends ItemView {
     // The scale follows the pane, not the zoom: zooming magnifies the map and
     // leaves the marks the size they were designed to be at this pane width.
     const scale = TufteMapCore.designScale(designPt);
-    const dots = TufteMapCore.dotSizing(drawModel, scale, designPt, compact);
+    const dots = TufteMapCore.dotSizing(drawModel, scale, designPt, compact, this.plugin.settings.dotSize);
 
     // The budget.  In the full presentation it is the rule the reader already
     // has: the setting counts names for the WHOLE sheet, so the number of
@@ -5632,7 +5865,7 @@ class TufteMapView extends ItemView {
       // The ring hugs the DRAWN disc, floor and ceiling included.
       const dots = (this.layout && this.layout.dots) || null;
       c.setAttribute("r",
-        (TufteMapCore.dotRadiusPt(nd.deg, scale, dots) + pad * scale).toFixed(2));
+        (TufteMapCore.dotRadiusPt(nd.importance || 0, scale, dots) + pad * scale).toFixed(2));
       c.setAttribute("fill", "none");
       g.appendChild(c);
     };
@@ -5677,7 +5910,7 @@ class TufteMapView extends ItemView {
     try { m = measure(title, { sizePt: sizePt, italic: true, trackingEm: 0 }); } catch (e) { m = null; }
     if (!m) m = TufteMapCore.approximateMeasurer(title, { sizePt: sizePt, italic: true, trackingEm: 0 });
     const p = this.toSheet(nd.x, nd.y);
-    const off = TufteMapCore.dotRadiusPt(nd.deg, scale, L.dots || null) + HOVER_NAME_GAP_PT * scale;
+    const off = TufteMapCore.dotRadiusPt(nd.importance || 0, scale, L.dots || null) + HOVER_NAME_GAP_PT * scale;
     let x = p[0] + off, anchor = "start";
     if (x + m.width > L.sheetWidthPt) { x = p[0] - off; anchor = "end"; }
     // A long title on a narrow sheet can overrun both edges; then it starts
@@ -6062,6 +6295,7 @@ class TufteMapView extends ItemView {
     if (this.closed) return;
     if (what === "links") { this.drawAllLinks(); this.applyClasses(); return; }
     if (what === "names") { if (this.model) this.renderSheet(); return; }
+    if (what === "importance") { this.rescore(); return; }
     this.recompute({ reason: "settings" }).catch((e) => console.error("tufte-map:", e));
   }
 
@@ -6118,7 +6352,7 @@ class TufteMapSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(tt("Notes to name"))
-      .setDesc(tt("How many of the most connected notes the map tries to name. Summits are always named, and zooming in names more."))
+      .setDesc(tt("How many of the most important notes the map tries to name. Summits are always named, and zooming in names more."))
       .addSlider((s) =>
         s
           .setLimits(10, 60, 1)
@@ -6148,6 +6382,55 @@ class TufteMapSettingTab extends PluginSettingTab {
             this.plugin.debounceViews("names");
           })
       );
+
+    new Setting(containerEl)
+      .setName(tt("Dot size"))
+      .setDesc(tt("The size of every dot. Importance is shown by colour: the most important dot is only a tenth larger than the least."))
+      .addSlider((s) =>
+        s
+          .setLimits(0.5, 2, 0.1)
+          .setValue(this.plugin.settings.dotSize)
+          .setDynamicTooltip()
+          .onChange(async (v) => {
+            this.plugin.settings.dotSize = +v;
+            await this.plugin.saveState();
+            this.plugin.debounceViews("names");
+          })
+      );
+
+    // The four weights share one explanation, so it is said once, on a
+    // heading, rather than four times; each slider says only what it weighs.
+    new Setting(containerEl)
+      .setName(tt("Importance"))
+      .setHeading()
+      .setDesc(tt("What makes a note important. Importance decides a dot's colour, which note anchors each summit, and which notes are named. Links are counted with the two link weights and the notes ranked by the total; length and recency are ranked on their own and join by their weights."));
+    // Each string is written out inside its own tt() call, so the l10n audit
+    // (which reads literals) sees every one of them.
+    const weights = [
+      ["importanceInbound", tt("Inbound links"), tt("How much each link into the note counts.")],
+      ["importanceOutbound", tt("Outbound links"), tt("How much each link out of the note counts.")],
+      ["importanceLength", tt("Note length"),
+        tt("How much the note's length counts, by its size on disk — a stand-in for word count. Off by default.")],
+      ["importanceRecency", tt("Recent edits"),
+        tt("How much a recent edit counts: the most recently changed notes rank highest. Off by default.")]
+    ];
+    for (const row of weights) {
+      const key = row[0];
+      new Setting(containerEl)
+        .setName(row[1])
+        .setDesc(row[2])
+        .addSlider((s) =>
+          s
+            .setLimits(0, 10, 1)
+            .setValue(this.plugin.settings[key])
+            .setDynamicTooltip()
+            .onChange(async (v) => {
+              this.plugin.settings[key] = +v;
+              await this.plugin.saveState();
+              this.plugin.debounceViews("importance");
+            })
+        );
+    }
 
     new Setting(containerEl)
       .setName(tt("Show links between summits"))
@@ -6226,10 +6509,35 @@ module.exports = class TufteMapPlugin extends Plugin {
         this.settings[k] = saved[k];
       }
     }
+    // The slider settings are numbers in the slider's range or they are the
+    // default: a hand-edited "huge" must not reach the renderer as a radius.
+    const ranges = {
+      dotSize: [0.5, 2],
+      importanceInbound: [0, 10],
+      importanceOutbound: [0, 10],
+      importanceLength: [0, 10],
+      importanceRecency: [0, 10]
+    };
+    for (const k in ranges) {
+      const v = this.settings[k];
+      this.settings[k] = typeof v === "number" && Number.isFinite(v)
+        ? clamp(v, ranges[k][0], ranges[k][1]) : DEFAULT_SETTINGS[k];
+    }
     const c = data.cache;
     this.cache = c && c.positions && typeof c.positions === "object"
       ? { hash: String(c.hash || ""), frameW: +c.frameW || 0, positions: c.positions }
       : { hash: "", frameW: 0, positions: {} };
+  }
+
+  /** The four importance weights, in the shape noteImportance takes. */
+  importanceWeights() {
+    const s = this.settings;
+    return {
+      inbound: s.importanceInbound,
+      outbound: s.importanceOutbound,
+      length: s.importanceLength,
+      recency: s.importanceRecency
+    };
   }
 
   async saveState() {
@@ -6262,12 +6570,28 @@ module.exports = class TufteMapPlugin extends Plugin {
   }
 
   /** Settings move under a dragging finger; recomputing on every pixel of a
-   *  slider is how a plugin earns a reputation. */
+   *  slider is how a plugin earns a reputation.  One timer serves every
+   *  setting, so the kinds asked for while it runs are COLLECTED rather than
+   *  the last replacing the rest: a weight slider and then the dot-size
+   *  slider inside the same 400 ms must not lose the rescore.  When the timer
+   *  fires the strongest kind asked for is done once — a recompute redraws
+   *  everything, a rescore re-places the labels too — and "links" is its own
+   *  small job beside them. */
   debounceViews(what) {
+    if (!this.viewPending) this.viewPending = new Set();
+    this.viewPending.add(what);
     if (this.viewTimer) window.clearTimeout(this.viewTimer);
     this.viewTimer = window.setTimeout(() => {
       this.viewTimer = 0;
-      this.eachView((v) => v.refreshFromSettings(what));
+      const asked = this.viewPending;
+      this.viewPending = new Set();
+      let main = null;
+      for (const k of asked) {
+        if (k !== "links" && k !== "names" && k !== "importance") { main = k; break; }
+      }
+      if (!main) main = asked.has("importance") ? "importance" : (asked.has("names") ? "names" : null);
+      if (main) this.eachView((v) => v.refreshFromSettings(main));
+      if (asked.has("links")) this.eachView((v) => v.refreshFromSettings("links"));
     }, 400);
   }
 
